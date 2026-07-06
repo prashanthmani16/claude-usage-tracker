@@ -1,0 +1,161 @@
+/* =============================================================================
+ *  Claude Usage Stats — injected UI styles  (finalized design tokens)
+ * ========================================================================== */
+
+.cus,
+.cus * {
+  box-sizing: border-box;
+}
+
+/* ---- design tokens: LIGHT (default) ---- */
+.cus {
+  --cus-card-bg: linear-gradient(90deg, #ececE9 0%, #f3f3f1 100%);
+  --cus-card-border: #d9d9d7;
+  --cus-name: #373734;
+  --cus-muted: #7b7a74;
+  --cus-track-card: #e5e5e2; /* Figma: card bar track = #E5E5E2 (same as strip) */
+  --cus-track-strip: #e5e5e2;
+  --cus-fill: linear-gradient(90deg, #1b4d88 0%, #2a78d6 100%);
+  --cus-fill-red: linear-gradient(90deg, #cf4b3b 0%, #e5715f 100%);
+  --cus-layer-bg: #fcfcfb;
+  --cus-layer-border: #e6e6e5;
+  --cus-divider: #d8d8d7;
+  --cus-font: "Anthropic Sans Text", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto,
+    Helvetica, Arial, sans-serif;
+}
+
+/* ---- design tokens: DARK ---- */
+html.cus-theme-dark .cus {
+  --cus-card-bg: linear-gradient(90deg, #2a2926 0%, #302f2c 100%);
+  --cus-card-border: #3c3a35;
+  --cus-name: #edebe6;
+  --cus-muted: #a6a39b;
+  --cus-track-card: #3a3833;
+  --cus-track-strip: #3a3833;
+  --cus-layer-bg: #30302e;
+  --cus-layer-border: #3e3c37;
+  --cus-divider: #46443f;
+}
+
+/* ---- shared: progress bar ---- */
+.cus-bar {
+  flex: 1 1 auto;
+  min-width: 1px;
+  height: 6px;
+  border-radius: 999px;
+  background: var(--cus-track-card);
+  overflow: hidden;
+}
+.cus-bar-fill {
+  height: 100%;
+  width: 0;
+  min-width: 6px; /* always show a rounded dot, even at 0% */
+  border-radius: 999px;
+  background: var(--cus-fill);
+  transition: width 0.28s ease;
+}
+.cus-bar-fill.cus-red {
+  background: var(--cus-fill-red);
+}
+
+/* ---- shared: reset (stopwatch + text) ---- */
+.cus-reset {
+  display: flex; /* block-level: no inline line-box, so each meter is exactly 48px (Figma) */
+  align-items: center;
+  gap: 5px;
+  height: 16px;
+  color: var(--cus-muted);
+}
+.cus-reset > svg {
+  width: 14px;
+  height: 14px;
+  flex: 0 0 auto;
+}
+.cus-reset > span {
+  font: 400 12px/16px var(--cus-font);
+  color: var(--cus-muted);
+}
+
+/* ============================================================
+ *  1. SIDEBAR CARD  (above the profile)
+ * ========================================================== */
+.cus-card {
+  /* Per Figma: the card sits centered in its footer container with equal
+     breathing room top & bottom (12px). Sides stay 16px so the border lines
+     up with the sidebar's 16px content inset (flush with the profile row). */
+  margin: 12px 16px;
+  padding: 12px 14px;
+  border: 0.5px solid var(--cus-card-border);
+  border-radius: 8px;
+  background: var(--cus-card-bg);
+  font-family: var(--cus-font);
+}
+.cus-card-label {
+  margin-bottom: 10px;
+  font: 400 12px/16px var(--cus-font);
+  color: var(--cus-muted);
+}
+.cus-meter + .cus-meter {
+  margin-top: 16px;
+}
+.cus-meter-name {
+  display: block;
+  font: 500 12px/16px var(--cus-font);
+  color: var(--cus-name);
+}
+.cus-bar-row {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  height: 16px;
+}
+.cus-meter-pct {
+  flex: 0 0 auto;
+  width: 32px;
+  text-align: right;
+  font: 400 12px/16px var(--cus-font);
+  color: var(--cus-muted);
+}
+
+/* ============================================================
+ *  2 & 3. STATS LAYER  (sits BEHIND the composer, peeks out below)
+ * ========================================================== */
+.cus-stats-layer {
+  position: relative;
+  z-index: -1; /* behind Claude's composer, above the page background */
+  margin: -58px 1px 0; /* pulled up so its top hides behind the composer */
+  padding: 66px 12px 10px 14px; /* top pushes the strip below the composer (centered) */
+  border: 1px solid var(--cus-layer-border);
+  border-radius: 20px;
+  background: var(--cus-layer-bg);
+  font-family: var(--cus-font);
+  pointer-events: none; /* never intercept clicks meant for the composer */
+}
+.cus-stats-layer--design {
+  border-radius: 12px;
+  padding: 66px 9px 10px;
+}
+.cus-strip-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.cus-strip-label {
+  font: 500 12px/16px var(--cus-font);
+  color: var(--cus-name);
+  white-space: nowrap;
+}
+.cus-strip-pct {
+  font: 400 12px/16px var(--cus-font);
+  color: var(--cus-muted);
+  white-space: nowrap;
+}
+.cus-stats-layer .cus-bar {
+  background: var(--cus-track-strip);
+}
+.cus-divider {
+  flex: 0 0 auto;
+  width: 1px;
+  height: 10px;
+  background: var(--cus-divider);
+}
