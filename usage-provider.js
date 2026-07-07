@@ -115,7 +115,8 @@
   function parseUsageDialog(dlg) {
     const clean = (e) => (e.textContent || "").replace(/\s+/g, " ").trim();
     const isPctUsed = (s) => /^\d+%\s*used$/i.test(s);
-    const isReset = (s) => /^Resets\b/i.test(s) || /^Expir/i.test(s) || /haven'?t used/i.test(s);
+    const isReset = (s) =>
+      /^Resets\b/i.test(s) || /^Expir/i.test(s) || /haven'?t used/i.test(s) || /^Starts when\b/i.test(s);
     // "$19.80 of $125.00 spent" -> { currency, spent, total }
     const spendOf = (s) => {
       const m = s.match(/^\s*([£$€])\s*([\d,]+(?:\.\d+)?)\s+of\s+([£$€])?\s*([\d,]+(?:\.\d+)?)/i);
