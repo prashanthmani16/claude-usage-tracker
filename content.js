@@ -52,7 +52,7 @@
   // "Not started yet" label.
   function tidyReset(text) {
     var t = String(text == null ? "" : text)
-      .replace(/^\s*(?:Resets\s+)?(?:in\s+)?/i, "") // drop leading "Resets" and/or "in"
+      .replace(/^\s*(?:(?:Resets|Expires?)\s+)?(?:in\s+)?/i, "") // drop leading "Resets"/"Expires"/"in"
       .replace(/\s*(?:GMT|UTC)\b.*$/i, "")
       .replace(/[\s,]+$/, "")
       .trim();
