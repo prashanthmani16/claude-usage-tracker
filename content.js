@@ -52,7 +52,7 @@
   // "Not started yet" label.
   function tidyReset(text) {
     var t = String(text == null ? "" : text)
-      .replace(/^\s*Resets\s+/i, "")
+      .replace(/^\s*(?:Resets\s+)?(?:in\s+)?/i, "") // drop leading "Resets" and/or "in"
       .replace(/\s*(?:GMT|UTC)\b.*$/i, "")
       .replace(/[\s,]+$/, "")
       .trim();
@@ -87,7 +87,7 @@
     var row = el("div", "cus-strip-row");
     var label =
       data.type === "spend"
-        ? "Usage spend " +
+        ? "Spend " +
           data.currency +
           Number(data.spent).toFixed(2) +
           " / " +
