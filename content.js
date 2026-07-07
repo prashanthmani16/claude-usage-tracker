@@ -196,6 +196,20 @@
     footer.parentElement.insertBefore(card, footer);
   }
 
+  // Pin the strip to the composer's exact width + horizontal position so it
+  // tucks directly under the composer, instead of spanning the wider parent and
+  // spilling past the composer's edge. Measures the live rendered boxes, so it
+  // works whether Claude lays the composer out as a block or a flex item.
+  function alignLayerToComposer(layer, composer) {
+    try {
+      var cw = composer.getBoundingClientRect().width;
+      layer.style.width = cw + "px";
+      layer.style.left = "0px"; // reset before measuring natural position
+      var delta = composer.getBoundingClientRect().left - layer.getBoundingClientRect().left;
+      layer.style.left = delta + "px"; // position:relative nudge (set in CSS)
+    } catch (e) {}
+  }
+
   function injectLayer(data, isDesign) {
     var marker = isDesign ? "design" : "composer";
     var existing = document.querySelector('[data-cus="' + marker + '"]');
@@ -207,12 +221,14 @@
     var composer = isDesign ? findDesignComposer() : findComposer();
     if (!composer || !composer.parentElement) return;
     var sig = sigOf(payload) + "|" + marker;
-    if (existing && existing.dataset.cusSig === sig && existing.previousElementSibling === composer)
-      return;
-    if (existing) existing.remove();
-    var layer = buildStatsLayer(payload, isDesign);
-    layer.dataset.cusSig = sig;
-    composer.insertAdjacentElement("afterend", layer);
+    var layer = existing;
+    if (!(existing && existing.dataset.cusSig === sig && existing.previousElementSibling === composer)) {
+      if (existing) existing.remove();
+      layer = buildStatsLayer(payload, isDesign);
+      layer.dataset.cusSig = sig;
+      composer.insertAdjacentElement("afterend", layer);
+    }
+    alignLayerToComposer(layer, composer); // keep aligned even when data is unchanged
   }
 
   /* ---------------- orchestration ---------------- */
@@ -265,6 +281,9 @@
 
     // re-inject as Claude re-renders / navigates
     new MutationObserver(schedule).observe(document.body, { childList: true, subtree: true });
+
+    // re-align the strip to the composer when the viewport size changes
+    window.addEventListener("resize", schedule);
 
     // SPA route changes
     window.addEventListener("popstate", schedule);
