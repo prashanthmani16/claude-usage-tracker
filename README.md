@@ -2,6 +2,8 @@
 
 A browser extension that surfaces your Claude usage right on **claude.ai**, so you don't have to dig into Settings.
 
+![Claude Usage Stats — overview](screenshots/overview.png)
+
 It shows:
 - a **Usage limits** card in the sidebar (weekly limits on Pro/Max/Team),
 - a **session / spend** strip under the chat composer,
@@ -10,6 +12,20 @@ It shows:
 Works for **Pro, Max, Team, and Enterprise** (spend-based) plans, adapts to light/dark theme, and reads your real numbers from **Settings → Usage** automatically in the background.
 
 Chromium browsers only (Chrome, Edge, Brave, Arc, Opera) — Manifest V3.
+
+## Screenshots
+
+**Sidebar usage card** — weekly limits, pinned above your profile:
+
+<img src="screenshots/sidebar-card.png" width="300" alt="Sidebar usage card">
+
+**Composer strip** — current session (or spend) tucked under the composer:
+
+<img src="screenshots/composer-strip.png" width="640" alt="Composer session strip">
+
+**In use** — it stays put while you chat:
+
+![In a conversation](screenshots/in-chat.png)
 
 ## Install (Load unpacked)
 
