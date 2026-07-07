@@ -46,9 +46,22 @@
     bar.appendChild(fill);
     return bar;
   }
+  // Normalize the reset/status text for display: drop the leading "Resets"
+  // verb and any trailing timezone (e.g. "GMT+5:30"); collapse the "no usage
+  // yet" states — an empty reset or "You haven't used X yet" — into a single
+  // "Not started yet" label.
+  function tidyReset(text) {
+    var t = String(text == null ? "" : text)
+      .replace(/^\s*Resets\s+/i, "")
+      .replace(/\s*(?:GMT|UTC)\b.*$/i, "")
+      .replace(/[\s,]+$/, "")
+      .trim();
+    if (!t || /haven'?t used|^starts when/i.test(t)) return "Not started yet";
+    return t;
+  }
   function makeReset(text) {
     var r = el("span", "cus-reset", { html: STOPWATCH });
-    r.appendChild(el("span", null, { text: String(text) }));
+    r.appendChild(el("span", null, { text: tidyReset(text) }));
     return r;
   }
 

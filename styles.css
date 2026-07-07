@@ -9,11 +9,11 @@
 
 /* ---- design tokens: LIGHT (default) ---- */
 .cus {
-  --cus-card-bg: linear-gradient(90deg, #ececE9 0%, #f3f3f1 100%);
+  --cus-card-bg: #F1F1EE; /* Figma: solid card fill */
   --cus-card-border: #d9d9d7;
   --cus-name: #373734;
   --cus-muted: #7b7a74;
-  --cus-track-card: #e5e5e2; /* Figma: card bar track = #E5E5E2 (same as strip) */
+  --cus-track-card: #DDDDD9; /* Figma: card bar track */
   --cus-track-strip: #e5e5e2;
   --cus-fill: linear-gradient(90deg, #1b4d88 0%, #2a78d6 100%);
   --cus-fill-red: linear-gradient(90deg, #cf4b3b 0%, #e5715f 100%);
@@ -26,14 +26,14 @@
 
 /* ---- design tokens: DARK ---- */
 html.cus-theme-dark .cus {
-  --cus-card-bg: linear-gradient(90deg, #2a2926 0%, #302f2c 100%);
-  --cus-card-border: #3c3a35;
+  --cus-card-bg: #292928; /* dark: solid card fill */
+  --cus-card-border: #393937;
   --cus-name: #edebe6;
   --cus-muted: #a6a39b;
   --cus-track-card: #3a3833;
   --cus-track-strip: #3a3833;
-  --cus-layer-bg: #30302e;
-  --cus-layer-border: #3e3c37;
+  --cus-layer-bg: #1F1F1E;
+  --cus-layer-border: #2E2E2D;
   --cus-divider: #46443f;
 }
 
@@ -62,29 +62,32 @@ html.cus-theme-dark .cus {
 .cus-reset {
   display: flex; /* block-level: no inline line-box, so each meter is exactly 48px (Figma) */
   align-items: center;
-  gap: 5px;
-  height: 16px;
+  gap: 2px;
+  min-height: 16px;
   color: var(--cus-muted);
 }
 .cus-reset > svg {
-  width: 14px;
-  height: 14px;
+  width: 16px;
+  height: 16px;
   flex: 0 0 auto;
+  display: block; /* drop inline baseline gap so it centers with the text */
 }
 .cus-reset > span {
   font: 400 12px/16px var(--cus-font);
   color: var(--cus-muted);
+  position: relative;
+  top: 1px; /* font caps sit high in the line box; nudge to optical center vs icon */
 }
 
 /* ============================================================
  *  1. SIDEBAR CARD  (above the profile)
  * ========================================================== */
 .cus-card {
-  /* Per Figma: the card sits centered in its footer container with equal
-     breathing room top & bottom (12px). Sides stay 16px so the border lines
-     up with the sidebar's 16px content inset (flush with the profile row). */
-  margin: 12px 16px;
-  padding: 12px 14px;
+  /* Per Figma spec: 12px inset from the sidebar edges (top & sides), no gap
+     below so it sits flush above the profile row. 12px inner padding, 8px
+     radius, 0.5px border. */
+  margin: 12px 12px 0;
+  padding: 12px;
   border: 0.5px solid var(--cus-card-border);
   border-radius: 8px;
   background: var(--cus-card-bg);
@@ -100,8 +103,11 @@ html.cus-theme-dark .cus {
 }
 .cus-meter-name {
   display: block;
-  font: 500 12px/16px var(--cus-font);
+  font: 400 12px/16px var(--cus-font);
   color: var(--cus-name);
+  overflow: hidden; /* Figma: clamp long model names to a single line */
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 .cus-bar-row {
   display: flex;
@@ -113,8 +119,15 @@ html.cus-theme-dark .cus {
   flex: 0 0 auto;
   width: 32px;
   text-align: right;
+  overflow: hidden; /* Figma: ellipsis within the fixed 32px column */
+  text-overflow: ellipsis;
   font: 400 12px/16px var(--cus-font);
   color: var(--cus-muted);
+}
+/* Card meter only: 2px gap above the reset row, nudged 2px left (Figma). */
+.cus-meter .cus-reset {
+  margin-top: 2px;
+  margin-left: -2px;
 }
 
 /* ============================================================
@@ -124,7 +137,9 @@ html.cus-theme-dark .cus {
   position: relative;
   z-index: -1; /* behind Claude's composer, above the page background */
   margin: -58px 1px 0; /* pulled up so its top hides behind the composer */
-  padding: 66px 12px 10px 14px; /* top pushes the strip below the composer (centered) */
+  /* Strip insets: 18px sides, 10px bottom, 12px visible top. Top is 69px in
+     code = 58px tuck + 12px visible gap − 1px border. */
+  padding: 69px 18px 10px 18px;
   border: 1px solid var(--cus-layer-border);
   border-radius: 20px;
   background: var(--cus-layer-bg);
@@ -141,7 +156,7 @@ html.cus-theme-dark .cus {
   gap: 10px;
 }
 .cus-strip-label {
-  font: 500 12px/16px var(--cus-font);
+  font: 400 12px/16px var(--cus-font);
   color: var(--cus-name);
   white-space: nowrap;
 }
@@ -158,4 +173,8 @@ html.cus-theme-dark .cus {
   width: 1px;
   height: 10px;
   background: var(--cus-divider);
+}
+/* Strip only: tighten the gap between the divider and the timer by 2px. */
+.cus-strip-row .cus-reset {
+  margin-left: -2px;
 }
