@@ -51,8 +51,9 @@
       ],
       session: { type: "session", name: "Current session", pct: 33, reset: "2h 14m" }, design: null },
     enterprise: { plan: "enterprise",
-      sidebar: [],
-      session: { type: "spend", currency: "$", spent: 92.51, total: 200, pct: 33, reset: "Wed, Jul 1" }, design: null },
+      sidebar: [], // no weekly limits -> no side-nav card; stats live under the composer
+      session: { type: "spend", currency: "$", spent: 19.80, total: 125.0, pct: 16, reset: "Resets Sat, Aug 1" },
+      design: { name: "Claude Design", pct: 99, reset: "Expires July 18" } },
   };
 
   /* ===== 1. storage cache + cross-tab sync ============================= */
@@ -92,54 +93,98 @@
   }
 
   // Find the Settings → Usage dialog in a document (page or iframe).
+  // Covers both layouts: "Plan usage limits" (Pro/Max) and "Your usage
+  // limits" (Enterprise / spend-based).
   function usageDialogIn(doc) {
     try {
-      const dlg = doc.querySelector('[role="dialog"]');
-      return dlg && /Plan usage limits/i.test(dlg.innerText || "") ? dlg : null;
+      const dlgs = [].slice.call(doc.querySelectorAll('[role="dialog"]'));
+      for (var i = 0; i < dlgs.length; i++) {
+        if (/(Plan|Your) usage limits/i.test(dlgs[i].innerText || "")) return dlgs[i];
+      }
+      return null;
     } catch (_) { return null; }
   }
 
   /* Pure parse of a Usage dialog element -> target-shaped model (no storage).
    * Works on any document. Reads each progressbar's aria-valuenow; sections
-   * split by the "Plan usage limits"/"Weekly limits"/"Usage credits" headings.
+   * split by their headings. Handles BOTH live layouts:
+   *   - Pro/Max:     "Plan usage limits" (session bar) + "Weekly limits" bars
+   *   - Enterprise:  "Your usage limits" (spend bar) + "Claude Code and Cowork
+   *                  credit" + "Claude Design" allowance
    * Verified against the live claude.ai DOM. */
   function parseUsageDialog(dlg) {
     const clean = (e) => (e.textContent || "").replace(/\s+/g, " ").trim();
     const isPctUsed = (s) => /^\d+%\s*used$/i.test(s);
-    const isReset = (s) => /^Resets\b/i.test(s) || /^Expir/i.test(s) || /haven'?t used/i.test(s);
+    const isReset = (s) =>
+      /^Resets\b/i.test(s) || /^Expir/i.test(s) || /haven'?t used/i.test(s) || /^Starts when\b/i.test(s);
+    // "$19.80 of $125.00 spent" -> { currency, spent, total }
+    const spendOf = (s) => {
+      const m = s.match(/^\s*([£$€])\s*([\d,]+(?:\.\d+)?)\s+of\s+([£$€])?\s*([\d,]+(?:\.\d+)?)/i);
+      if (!m) return null;
+      return { currency: m[1], spent: parseFloat(m[2].replace(/,/g, "")), total: parseFloat(m[4].replace(/,/g, "")) };
+    };
+
     const walker = dlg.ownerDocument.createTreeWalker(dlg, NodeFilter.SHOW_ELEMENT);
-    let n, section = null, plan = null, label = null, reset = null, sess = null;
-    const weekly = [];
+    let n, section = null, plan = null, label = null, reset = null, spend = null, title = null;
+    const plans = [], weekly = [], credits = [], designs = [];
+    const bucket = () =>
+      section === "week" ? weekly : section === "credit" ? credits : section === "design" ? designs : plans;
+    const resetAcc = () => { label = reset = spend = null; };
+
     while ((n = walker.nextNode())) {
       if (n.getAttribute("role") === "progressbar") {
         if (!section) section = "plan";
-        const rec = { label, reset, pct: clampPct(+n.getAttribute("aria-valuenow")) };
-        if (section === "plan" && !sess) sess = rec;
-        else if (section === "week") weekly.push(rec);
-        label = reset = null;
+        bucket().push({ label, reset, spend, title, pct: clampPct(+n.getAttribute("aria-valuenow")) });
+        resetAcc();
         continue;
       }
       const isHeading = /^H[1-6]$/.test(n.tagName) || n.getAttribute("role") === "heading";
       if (n.childElementCount !== 0 && !isHeading) continue;
       const t = clean(n);
-      if (/Plan usage limits/i.test(t)) { section = "plan"; const p = t.replace(/.*Plan usage limits/i, "").trim(); if (p) plan = p; continue; }
-      if (/^Weekly limits/i.test(t)) { section = "week"; continue; }
-      if (/Usage credits/i.test(t)) { section = "credits"; continue; }
-      if (!t || isPctUsed(t)) continue;
+      if (!t) continue;
+
+      // section headings — each starts a fresh accumulator
+      if (/(Plan|Your) usage limits/i.test(t)) { section = "plan"; title = t; resetAcc(); const p = t.replace(/.*(Plan|Your) usage limits/i, "").trim(); if (p) plan = p; continue; }
+      if (/^Weekly limits/i.test(t)) { section = "week"; title = t; resetAcc(); continue; }
+      if (/Claude Code and Cowork credit|Usage credits/i.test(t)) { section = "credit"; title = t; resetAcc(); continue; }
+      if (/^Claude Design/i.test(t)) { section = "design"; title = t; resetAcc(); continue; }
+
+      // plan badge (e.g. the "Enterprise" chip next to the heading)
+      if (/^(Pro|Max|Team|Enterprise|Free)(\s*plan)?$/i.test(t)) { if (!plan) plan = t; continue; }
+
+      // value lines
+      const sp = spendOf(t); if (sp) { spend = sp; continue; }
+      if (isPctUsed(t)) continue;
       if (isReset(t)) { reset = t; continue; }
-      if (t.length <= 28 && !/£|\$|Last updated|Learn more|Refresh|Adjust|Buy|Turn on|Monthly spend|Current balance|\(\d+x\)/i.test(t)) label = t;
+      if (t.length <= 40 && !/£|\$|€|Last updated|Learn more|Refresh|Adjust|Buy|Turn on|Monthly spend|Current balance|one-time credit|separate allowance|draw from|applied before|\(\d+x\)/i.test(t)) label = t;
     }
-    if (!sess && !weekly.length) return null;
-    return {
-      plan: planKey(plan),
-      sidebar: weekly.map((w) => ({ name: w.label || "Usage", pct: w.pct, reset: w.reset || "" })),
-      session: sess ? { type: "session", name: sess.label || "Current session", pct: sess.pct, reset: sess.reset || "" } : null,
-      design: null,
-    };
+
+    if (!plans.length && !weekly.length && !credits.length && !designs.length) return null;
+
+    // Primary meter -> composer strip. Spend-based (Enterprise) or session (Pro/Max).
+    const primary = plans[0] || null;
+    let session = null;
+    if (primary) {
+      session = primary.spend
+        ? { type: "spend", currency: primary.spend.currency, spent: primary.spend.spent, total: primary.spend.total, pct: primary.pct, reset: primary.reset || "" }
+        : { type: "session", name: primary.label || "Current session", pct: primary.pct, reset: primary.reset || "" };
+    }
+
+    const design = designs.length
+      ? { name: "Claude Design", pct: designs[0].pct, reset: designs[0].reset || "" }
+      : null;
+
+    // Sidebar card holds WEEKLY limits only (Pro/Max/Team). Enterprise has no
+    // weekly limits, so this stays empty and the card is not shown — its numbers
+    // (spend + credits) live under the composer instead. The credit sections are
+    // parsed above but intentionally not surfaced in the side nav.
+    const sidebar = weekly.map((w) => ({ name: w.label || "Usage", pct: w.pct, reset: w.reset || "" }));
+
+    return { plan: planKey(plan), sidebar, session, design };
   }
 
   // Only rewrite storage when the numbers actually changed (avoids re-render loops).
-  const sigOf = (m) => JSON.stringify({ p: m.plan, s: m.session, w: m.sidebar });
+  const sigOf = (m) => JSON.stringify({ p: m.plan, s: m.session, w: m.sidebar, d: m.design });
   let lastSig = null;
   async function commit(base) {
     if (!base) return null;
