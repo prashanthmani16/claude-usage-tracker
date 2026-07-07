@@ -46,9 +46,19 @@
     bar.appendChild(fill);
     return bar;
   }
+  // Trim the leading "Resets " verb and any trailing timezone (e.g. "GMT+5:30")
+  // so the pill reads just the date/time. Applies everywhere the reset shows —
+  // sidebar card and composer strip — for every plan.
+  function tidyReset(text) {
+    return String(text == null ? "" : text)
+      .replace(/^\s*Resets\s+/i, "")
+      .replace(/\s*(?:GMT|UTC)\b.*$/i, "")
+      .replace(/[\s,]+$/, "")
+      .trim();
+  }
   function makeReset(text) {
     var r = el("span", "cus-reset", { html: STOPWATCH });
-    r.appendChild(el("span", null, { text: String(text) }));
+    r.appendChild(el("span", null, { text: tidyReset(text) }));
     return r;
   }
 
@@ -74,7 +84,7 @@
     var row = el("div", "cus-strip-row");
     var label =
       data.type === "spend"
-        ? "Usage spend " +
+        ? "Spend " +
           data.currency +
           Number(data.spent).toFixed(2) +
           " / " +
