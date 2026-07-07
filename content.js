@@ -50,11 +50,16 @@
   // so the pill reads just the date/time. Applies everywhere the reset shows —
   // sidebar card and composer strip — for every plan.
   function tidyReset(text) {
-    return String(text == null ? "" : text)
+    var t = String(text == null ? "" : text)
       .replace(/^\s*Resets\s+/i, "")
       .replace(/\s*(?:GMT|UTC)\b.*$/i, "")
       .replace(/[\s,]+$/, "")
       .trim();
+    // "No usage yet" states all read the same: an empty reset (e.g. "Starts
+    // when a message is sent", which isn't captured) or "You haven't used X
+    // yet" both become one consistent label.
+    if (!t || /haven'?t used|^starts when/i.test(t)) return "Not started yet";
+    return t;
   }
   function makeReset(text) {
     var r = el("span", "cus-reset", { html: STOPWATCH });
