@@ -51,7 +51,7 @@
   // sidebar card and composer strip — for every plan.
   function tidyReset(text) {
     var t = String(text == null ? "" : text)
-      .replace(/^\s*Resets\s+/i, "")
+      .replace(/^\s*(?:Resets\s+)?(?:in\s+)?/i, "") // drop leading "Resets" and/or "in"
       .replace(/\s*(?:GMT|UTC)\b.*$/i, "")
       .replace(/[\s,]+$/, "")
       .trim();
