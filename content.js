@@ -199,6 +199,13 @@
       if (existing) existing.remove();
       return;
     }
+    // When the side nav is collapsed to the icon rail it's too narrow for the
+    // card, so hide it (the composer strip is unaffected).
+    var nav = document.querySelector('[data-testid="menu-sidebar"]') || document.querySelector("nav");
+    if (nav && nav.getBoundingClientRect().width < 120) {
+      if (existing) existing.remove();
+      return;
+    }
     var footer = findSidebarFooter();
     if (!footer || !footer.parentElement) return;
     var sig = sigOf(data.sidebar);
