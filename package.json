@@ -1,0 +1,16 @@
+{
+  "name": "claude-usage-tracker",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Chrome extension that surfaces Claude usage in the sidebar and composer.",
+  "scripts": {
+    "test": "node --test test/*.test.js",
+    "check": "node --check usage-provider.js && node --check content.js"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "devDependencies": {
+    "jsdom": "^24.1.3"
+  }
+}

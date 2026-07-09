@@ -113,6 +113,8 @@
    *                  credit" + "Claude Design" allowance
    * Verified against the live claude.ai DOM. */
   function parseUsageDialog(dlg) {
+    if (!dlg || !dlg.ownerDocument) return null; // graceful: bad/empty input
+    try {
     const clean = (e) => (e.textContent || "").replace(/\s+/g, " ").trim();
     const isPctUsed = (s) => /^\d+%\s*used$/i.test(s);
     const isReset = (s) =>
@@ -132,7 +134,7 @@
     const resetAcc = () => { label = reset = spend = null; };
 
     while ((n = walker.nextNode())) {
-      if (n.getAttribute("role") === "progressbar") {
+      if (n.getAttribute("role") === "progressbar" || n.getAttribute("role") === "meter") {
         if (!section) section = "plan";
         bucket().push({ label, reset, spend, title, pct: clampPct(+n.getAttribute("aria-valuenow")) });
         resetAcc();
@@ -181,6 +183,7 @@
     const sidebar = weekly.map((w) => ({ name: w.label || "Usage", pct: w.pct, reset: w.reset || "" }));
 
     return { plan: planKey(plan), sidebar, session, design };
+    } catch (_) { return null; } // graceful: never let a DOM shift throw into the scraper
   }
 
   // Only rewrite storage when the numbers actually changed (avoids re-render loops).
@@ -234,7 +237,7 @@
         try { doc = f.contentDocument; } catch (_) { break; } // cross-origin (shouldn't happen)
         if (!doc) continue;
         const d = usageDialogIn(doc);
-        if (d && d.querySelector('[role="progressbar"]')) { dlg = d; break; }
+        if (d && d.querySelector('[role="progressbar"],[role="meter"]')) { dlg = d; break; }
         if (waited >= 4800 && !toggled) { // nudge the SPA to open the panel if needed
           toggled = true;
           try { f.contentWindow.location.hash = "#settings/general"; await sleep(600); f.contentWindow.location.hash = "#settings/usage"; } catch (_) {}

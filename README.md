@@ -37,8 +37,20 @@ Chromium browsers only (Chrome, Edge, Brave, Arc, Opera) — Manifest V3.
 
 After editing any file, return to the extensions page and click **reload ↻** on the card, then reload the claude.ai tab.
 
+## Development
+
+The data layer (`usage-provider.js`) is unit-tested with Node's built-in test runner + jsdom:
+
+```bash
+npm install   # dev-only: jsdom
+npm test      # runs test/*.test.js
+npm run check # syntax-check the content scripts
+```
+
+Tests cover the Settings → Usage parser (current `role="meter"` and legacy `role="progressbar"` layouts), the Enterprise spend layout, the scrape → cache → fetch path, graceful handling of malformed/empty DOM, and manifest/asset integrity. CI (`.github/workflows/ci.yml`) runs the same on every push and PR to `main`.
+
 ## Notes
 
-- Reads Claude's undocumented in-page DOM, so a claude.ai redesign may need selector tweaks (`content.js`) or parser tweaks (`usage-provider.js`).
+- Reads Claude's undocumented in-page DOM, so a claude.ai redesign may need selector tweaks (`content.js`) or parser tweaks (`usage-provider.js`). The parser accepts both `role="progressbar"` (legacy) and `role="meter"` (current) usage bars and fails soft (returns `null`) on anything it doesn't recognise.
 - To preview the UI without a live session, set `USE_MOCK = true` in `usage-provider.js`.
 - Unofficial tool, not affiliated with Anthropic.
