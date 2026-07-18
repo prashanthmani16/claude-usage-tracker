@@ -261,9 +261,24 @@
     }
   }
 
+  // Repaint the instant the side nav resizes (collapse/expand). Without this the
+  // card only re-evaluates on the 2s safety tick, so it lingers broken in the
+  // narrow rail for a couple seconds before hiding.
+  var _navRO = null, _watchedNav = null;
+  function watchNav() {
+    if (typeof ResizeObserver === "undefined") return;
+    var nav = document.querySelector('[data-testid="menu-sidebar"]') || document.querySelector("nav");
+    if (!nav || nav === _watchedNav) return;
+    if (!_navRO) _navRO = new ResizeObserver(schedule);
+    if (_watchedNav) _navRO.unobserve(_watchedNav);
+    _navRO.observe(nav);
+    _watchedNav = nav;
+  }
+
   function paint() {
     if (!lastData) return;
     applyTheme();
+    watchNav();
     injectSidebar(lastData);
     if (isDesignPage()) {
       var stray = document.querySelector('[data-cus="composer"]');
