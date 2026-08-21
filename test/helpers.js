@@ -14,6 +14,11 @@ const PROVIDER_SRC = fs.readFileSync(
   "utf8"
 );
 
+const CONTENT_SRC = fs.readFileSync(
+  path.join(__dirname, "..", "content.js"),
+  "utf8"
+);
+
 // Minimal chrome.storage.local + onChanged stub backed by a plain object.
 function stubChrome(store) {
   store = store || {};
@@ -86,4 +91,76 @@ function makeDialog(window, innerHTML) {
   return dlg;
 }
 
-module.exports = { loadProvider, makeDialog, stubChrome };
+// Boot the FULL extension (provider + content script) over a sidebar shell, with
+// the storage cache pre-seeded so content.js paints on its first tick without
+// scraping anything.
+//
+// Two jsdom gaps matter here:
+//   - there is no layout, so getBoundingClientRect() is all zeros; the collapse
+//     gate measures the sidebar root, so we give that element a real width.
+//   - `updatedAt` is stamped fresh so the provider's background loop treats the
+//     cache as current and never opens its hidden refresh iframe.
+async function loadExtension(opts) {
+  opts = opts || {};
+  const width = opts.sidebarWidth == null ? 288 : opts.sidebarWidth;
+  const model = Object.assign(
+    { plan: "team", sidebar: [], session: null, design: null },
+    opts.model,
+    { updatedAt: Date.now() }
+  );
+
+  const dom = new JSDOM(
+    `<!doctype html><html><body>${opts.html || ""}</body></html>`,
+    { url: "https://claude.ai/new", runScripts: "outside-only" }
+  );
+  const { window } = dom;
+
+  // content.js coalesces repaints through requestAnimationFrame. jsdom only
+  // supplies rAF under `pretendToBeVisual`, whose frame loop keeps firing after
+  // window.close() and then throws against the torn-down window — so shim rAF
+  // onto the window's OWN timers instead, which close() does clear.
+  window.requestAnimationFrame = (cb) => window.setTimeout(() => cb(Date.now()), 0);
+  window.cancelAnimationFrame = (id) => window.clearTimeout(id);
+
+  Object.defineProperty(window.HTMLElement.prototype, "innerText", {
+    configurable: true,
+    get() {
+      return this.textContent;
+    },
+  });
+
+  window.chrome = stubChrome({ "cus:model": model });
+
+  const root =
+    window.document.querySelector("aside.dframe-sidebar") ||
+    window.document.querySelector("nav");
+  if (root) {
+    root.getBoundingClientRect = () => ({
+      width, height: 900, top: 0, left: 0, right: width, bottom: 900, x: 0, y: 0,
+    });
+  }
+
+  const ctx = dom.getInternalVMContext();
+  vm.runInContext(PROVIDER_SRC, ctx, { filename: "usage-provider.js" });
+  vm.runInContext(CONTENT_SRC, ctx, { filename: "content.js" });
+
+  // content.js start() is async (await fetchUsage -> paint); let it settle.
+  await new Promise((r) => setTimeout(r, 30));
+
+  return {
+    window,
+    dom,
+    card: () => window.document.querySelector('[data-cus="sidebar"]'),
+    // content.js installs intervals, a MutationObserver and rAF repaints; let
+    // any queued repaint drain BEFORE tearing the window down, otherwise a
+    // callback fires against a closed window and throws. Closing stops the
+    // remaining timers so the test process can exit.
+    close: async () => {
+      await new Promise((r) => setTimeout(r, 60));
+      window.close();
+      await new Promise((r) => setTimeout(r, 10));
+    },
+  };
+}
+
+module.exports = { loadProvider, makeDialog, stubChrome, loadExtension };

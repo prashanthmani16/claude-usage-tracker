@@ -2,16 +2,19 @@
  *  Claude Usage Stats — content script (UI + injection)
  *  ---------------------------------------------------------------------------
  *  Builds and maintains the three injected pieces:
- *    1. Sidebar "Weekly Usage limits" card  (above the profile in the side nav)
+ *    1. Sidebar "Weekly Usage limits" card  (above the side nav's bottom tray)
  *    2. Current-session strip                (behind the chat composer)
  *    3. Claude Design meter                  (behind the design composer)
  *
  *  Data comes from ClaudeUsageProvider.fetchUsage()  (see usage-provider.js).
  *
- *  HEADS UP ON SELECTORS: Claude's class names are hashed and change over time,
- *  so the finders use structural/heuristic strategies instead. If a piece is
- *  missing or lands in the wrong spot on the live site, tweak the matching
- *  finder in the "FINDERS" section — they're isolated and labelled.
+ *  HEADS UP ON SELECTORS: Claude's utility classes are hashed and change over
+ *  time, so the finders use structural/heuristic strategies instead. The one
+ *  exception is the app shell's own `dframe-*` / `df-*` classes (sidebar, bottom
+ *  tray, footer row), which are semantic and stable enough to anchor on — every
+ *  such use below is backed by a fallback. If a piece is missing or lands in the
+ *  wrong spot on the live site, tweak the matching finder in the "FINDERS"
+ *  section — they're isolated and labelled.
  * ========================================================================== */
 (function () {
   "use strict";
@@ -56,7 +59,7 @@
       .replace(/\s*(?:GMT|UTC)\b.*$/i, "")
       .replace(/[\s,]+$/, "")
       .trim();
-    if (!t || /haven'?t used|^starts when/i.test(t)) return "Not started yet";
+    if (!t || /haven['\u2019]?t used|^starts when/i.test(t)) return "Not started yet";
     return t;
   }
   function makeReset(text) {
@@ -151,16 +154,40 @@
     return input.parentElement;
   }
 
-  // The sidebar profile footer row (avatar / name / plan) at the very bottom.
-  // The card is inserted immediately BEFORE this row, so it pins to the bottom
-  // of the sidebar just above the "<name> / <plan>" profile row — not at the top.
-  function findSidebarFooter() {
-    var sidebar =
+  // The side nav root — used both to scope the footer search and to measure the
+  // collapsed/expanded width. Claude's current shell is an
+  // <aside class="dframe-sidebar"> wrapping a [data-testid="sidebar"] body; it
+  // has no <nav> element at all. The older <nav> / [data-testid="menu-sidebar"]
+  // selectors are kept last as fallbacks for stale builds.
+  function findSidebarRoot() {
+    return (
+      document.querySelector("aside.dframe-sidebar") ||
+      document.querySelector('[data-testid="sidebar"]') ||
       document.querySelector('[data-testid="menu-sidebar"]') ||
-      document.querySelector("nav") ||
-      document.body;
-    var btns = [].slice.call(sidebar.querySelectorAll("button, a"));
-    // Primary anchor: the bottom profile button labelled "<name>, Settings".
+      document.querySelector("nav")
+    );
+  }
+
+  // The element the card is inserted immediately BEFORE, which pins the card to
+  // the bottom of the side nav rather than the top.
+  //
+  // Preferred anchor is the whole bottom tray, so the card sits ABOVE it — above
+  // the products row ("Design") and the "<name> · <org>" profile row both. The
+  // tray is the right anchor rather than the products row itself because that
+  // row is absent for accounts without those products, whereas the tray always
+  // holds the profile row.
+  function findSidebarFooter() {
+    var root = findSidebarRoot() || document.body;
+    // Current shell: sidebar body ends in .df-bottom-tray (products + profile).
+    var tray = root.querySelector(".df-bottom-tray");
+    if (tray) return tray;
+    // If the tray is ever renamed, fall back to sitting just above the profile
+    // row alone (below the products row, but still pinned to the bottom).
+    var footer = root.querySelector(".df-footer-row");
+    if (footer) return footer;
+    // Legacy shells: anchor on the profile button, then climb to its row.
+    var btns = [].slice.call(root.querySelectorAll("button, a"));
+    // The bottom profile button used to be labelled "<name>, Settings".
     var btn = btns.filter(function (b) {
       return /,\s*settings$/i.test(b.getAttribute("aria-label") || "");
     }).pop();
@@ -170,15 +197,22 @@
         return /(pro|max|team|free)\s*plan|enterprise/i.test(b.innerText || "");
       }).pop();
     }
-    if (!btn) return null;
-    // Climb to the footer row — a top-bordered container — but bounded, and
-    // never up to the sidebar/nav root (which would push the card to the top).
-    var row = btn;
-    for (var i = 0; i < 6 && row.parentElement && row.parentElement !== sidebar; i++) {
-      if (/border-t/.test("" + (row.className || ""))) break;
-      row = row.parentElement;
+    if (btn) {
+      // Climb to the footer row — a top-bordered container — but bounded, and
+      // never up to the sidebar root (which would push the card to the top).
+      var row = btn;
+      for (var i = 0; i < 6 && row.parentElement && row.parentElement !== root; i++) {
+        if (/border-t/.test("" + (row.className || ""))) break;
+        row = row.parentElement;
+      }
+      return row;
     }
-    return row;
+    // Last resort: anchor on the bottom-most block of the sidebar body, so a
+    // future rename of .df-footer-row degrades to "card at the bottom of the
+    // sidebar" rather than no card at all (the failure this whole finder had).
+    var body = document.querySelector('[data-testid="sidebar"]') || root;
+    var anchor = body.querySelector(".df-bottom-tray") || body.lastElementChild;
+    return anchor && anchor.parentElement ? anchor : null;
   }
 
   // The Claude Design composer box (same heuristic — it also has an editable).
@@ -201,7 +235,7 @@
     }
     // When the side nav is collapsed to the icon rail it's too narrow for the
     // card, so hide it (the composer strip is unaffected).
-    var nav = document.querySelector('[data-testid="menu-sidebar"]') || document.querySelector("nav");
+    var nav = findSidebarRoot();
     if (nav && nav.getBoundingClientRect().width < 120) {
       if (existing) existing.remove();
       return;
@@ -267,7 +301,7 @@
   var _navRO = null, _watchedNav = null;
   function watchNav() {
     if (typeof ResizeObserver === "undefined") return;
-    var nav = document.querySelector('[data-testid="menu-sidebar"]') || document.querySelector("nav");
+    var nav = findSidebarRoot();
     if (!nav || nav === _watchedNav) return;
     if (!_navRO) _navRO = new ResizeObserver(schedule);
     if (_watchedNav) _navRO.unobserve(_watchedNav);

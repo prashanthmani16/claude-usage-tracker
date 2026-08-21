@@ -6,7 +6,7 @@
 const { test } = require("node:test");
 const assert = require("node:assert");
 const { loadProvider, makeDialog } = require("./helpers");
-const { proMaxDialog, enterpriseDialog } = require("./fixtures");
+const { proMaxDialog, enterpriseDialog, teamDialog } = require("./fixtures");
 
 test('parses the CURRENT role="meter" DOM (Pro/Max)', () => {
   const { window, provider } = loadProvider();
@@ -34,6 +34,39 @@ test('parses the CURRENT role="meter" DOM (Pro/Max)', () => {
     reset: "Resets in 18 hr 9 min",
   });
   assert.equal(model.design, null);
+});
+
+test("parses the live Team layout: promo blurb and a curly apostrophe", () => {
+  const { window, provider } = loadProvider();
+  const dlg = makeDialog(window, teamDialog("meter"));
+
+  const model = provider.parseUsageDialog(dlg);
+
+  assert.ok(model, "model should not be null");
+  assert.equal(model.plan, "team");
+  // "Your usage limits" also fronts the Team layout, but with a session bar
+  // rather than a spend bar — so this must NOT come out as type "spend".
+  assert.deepEqual(model.session, {
+    type: "session",
+    name: "Current session",
+    pct: 7,
+    reset: "Resets in 4 hr 31 min",
+  });
+
+  assert.equal(model.sidebar.length, 2, "the promo blurb must not become a meter");
+  assert.deepEqual(model.sidebar[0], {
+    name: "All models",
+    pct: 1,
+    reset: "Resets Sat 7:29 PM",
+  });
+  // Claude writes "haven\u2019t" with a CURLY apostrophe. When the reset matcher
+  // only accepted a straight one, this sentence fell through to the label and
+  // became the meter's NAME.
+  assert.deepEqual(model.sidebar[1], {
+    name: "Fable",
+    pct: 0,
+    reset: "You haven\u2019t used Fable yet",
+  });
 });
 
 test('still parses the LEGACY role="progressbar" DOM (regression guard)', () => {
