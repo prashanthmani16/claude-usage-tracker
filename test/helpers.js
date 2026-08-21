@@ -166,6 +166,7 @@ async function loadExtension(opts) {
     dom,
     card: () => window.document.querySelector('[data-cus="sidebar"]'),
     strip: () => window.document.querySelector('[data-cus="composer"]'),
+    designStrip: () => window.document.querySelector('[data-cus="design"]'),
     // let a mutation-driven repaint land, then read the DOM again
     settle: () => new Promise((r) => setTimeout(r, 40)),
     // content.js installs intervals, a MutationObserver and rAF repaints; let

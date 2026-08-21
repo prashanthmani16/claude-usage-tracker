@@ -131,9 +131,96 @@ function composerShell(width, height) {
   ].join("");
 }
 
+
+// Free: a session bar and NO "Weekly limits" section, so there is no sidebar
+// card and only the composer strip. MODELLED on the Pro/Max layout (the panel
+// is the same component) rather than captured from a live Free account.
+function freeDialog(role) {
+  role = role || "meter";
+  return [
+    "<h2>Plan usage limits</h2>",
+    "<span>Free</span>",
+    "<span>Current session</span>",
+    "<span>Resets in 2 hr 5 min</span>",
+    "<span>48% used</span>",
+    bar(role, 48),
+  ].join("");
+}
+
+// Pro: session bar + a single weekly "All models" bar (Pro has no per-model
+// weekly split, so the card carries exactly one meter).
+function proDialog(role) {
+  role = role || "meter";
+  return [
+    "<h2>Plan usage limits</h2>",
+    "<span>Pro</span>",
+    "<span>Current session</span>",
+    "<span>Resets in 1 hr 12 min</span>",
+    "<span>22% used</span>",
+    bar(role, 22),
+    "<h2>Weekly limits</h2>",
+    "<span>All models</span>",
+    "<span>Resets Sat 7:29 PM</span>",
+    "<span>55% used</span>",
+    bar(role, 55),
+  ].join("");
+}
+
+// Max: the badge carries the tier multiplier ("Max (20x)"), which must NOT be
+// picked up as a meter name, and the weekly section lists two models.
+function maxTierDialog(role) {
+  role = role || "meter";
+  return [
+    "<h2>Plan usage limits</h2>",
+    "<span>Max (20x)</span>",
+    "<span>Current session</span>",
+    "<span>Resets in 3 hr 19 min</span>",
+    "<span>16% used</span>",
+    bar(role, 16),
+    "<h2>Weekly limits</h2>",
+    "<span>All models</span>",
+    "<span>Resets in 18 hr 9 min</span>",
+    "<span>26% used</span>",
+    bar(role, 26),
+    "<span>Fable</span>",
+    "<span>Resets in 18 hr 9 min</span>",
+    "<span>38% used</span>",
+    bar(role, 38),
+  ].join("");
+}
+
+// Enterprise, FULL layout: the spend meter, plus the "Claude Code and Cowork
+// credit" section, plus the separate "Claude Design" allowance. The credit
+// section is parsed but deliberately not surfaced; Design is shown on the
+// design surface only.
+function enterpriseFullDialog(role) {
+  role = role || "meter";
+  return [
+    "<h2>Your usage limits</h2>",
+    "<span>Enterprise</span>",
+    "<span>$80.65 of $125.00 spent</span>",
+    "<span>Resets Sat, Aug 1</span>",
+    "<span>65% used</span>",
+    bar(role, 65),
+    "<h2>Claude Code and Cowork credit</h2>",
+    "<span>Monthly spend</span>",
+    "<span>$12.00 of $50.00 spent</span>",
+    "<span>24% used</span>",
+    bar(role, 24),
+    "<h2>Claude Design</h2>",
+    "<span>Expires July 18</span>",
+    "<span>99% used</span>",
+    bar(role, 99),
+  ].join("");
+}
+
 module.exports = {
   bar,
   composerShell,
+  freeDialog,
+  proDialog,
+  maxTierDialog,
+  enterpriseFullDialog,
   proMaxDialog,
   enterpriseDialog,
   teamDialog,

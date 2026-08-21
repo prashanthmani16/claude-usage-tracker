@@ -89,6 +89,7 @@
     if (t.includes("enterprise")) return "enterprise";
     if (t.includes("team")) return "team";
     if (t.includes("pro")) return "pro";
+    if (t.includes("free")) return "free";
     return detectPlanFromDOM();
   }
 
@@ -151,8 +152,10 @@
       if (/Claude Code and Cowork credit|Usage credits/i.test(t)) { section = "credit"; title = t; resetAcc(); continue; }
       if (/^Claude Design/i.test(t)) { section = "design"; title = t; resetAcc(); continue; }
 
-      // plan badge (e.g. the "Enterprise" chip next to the heading)
-      if (/^(Pro|Max|Team|Enterprise|Free)(\s*plan)?$/i.test(t)) { if (!plan) plan = t; continue; }
+      // plan badge (e.g. the "Enterprise" chip next to the heading). Max carries
+      // its tier multiplier in the badge -- "Max (20x)", "Max 5x" -- so the
+      // suffix is optional here; planKey() normalises it back to "max".
+      if (/^(Pro|Max|Team|Enterprise|Free)(\s*\(?\d+x\)?)?(\s*plan)?$/i.test(t)) { if (!plan) plan = t; continue; }
 
       // value lines
       const sp = spendOf(t); if (sp) { spend = sp; continue; }
@@ -253,10 +256,11 @@
   /* ===== 5. plan fallback ============================================= */
   function detectPlanFromDOM() {
     const t = (document.body && document.body.innerText || "").toLowerCase();
-    if (t.includes("max plan")) return "max";
+    if (t.includes("max plan") || /max\s*\(?\d+x/.test(t)) return "max";
     if (t.includes("enterprise")) return "enterprise";
     if (t.includes("team plan")) return "team";
     if (t.includes("pro plan")) return "pro";
+    if (t.includes("free plan")) return "free";
     return "pro";
   }
 
