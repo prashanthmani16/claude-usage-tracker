@@ -116,3 +116,65 @@ test("falls back to the bottom of the sidebar if the tray classes are renamed", 
     await ext.close();
   }
 });
+
+/* ---------------------------------------------------------------------------
+ * Composer strip: it must not paint onto the initial splash, an auth screen, or
+ * a screen the SPA navigated to after the composer unmounted. Reported as
+ * "broken stats on the splash screen" — the strip survived as an orphan and
+ * alignLayerToComposer() collapsed it into a tall pill with the text outside.
+ * ------------------------------------------------------------------------- */
+
+const { composerShell } = require("./fixtures");
+const SPEND = {
+  type: "spend", currency: "$", spent: 80.65, total: 125, pct: 65,
+  reset: "Resets Sat, Aug 1",
+};
+
+test("paints the strip on a real chat surface", async () => {
+  const ext = await loadExtension({ html: composerShell(672), model: { session: SPEND } });
+  try {
+    const strip = ext.strip();
+    assert.ok(strip, "expected the composer strip on a normal chat page");
+    assert.equal(strip.style.width, "672px", "strip should match the composer width");
+    assert.match(strip.textContent, /Spend \$80\.65 \/ \$125\.00/);
+  } finally {
+    await ext.close();
+  }
+});
+
+test("does NOT paint onto a splash-screen composer stub", async () => {
+  // Pre-boot stub: a few px wide. Pinning to this produced the broken pill.
+  const ext = await loadExtension({ html: composerShell(48, 210), model: { session: SPEND } });
+  try {
+    assert.equal(ext.strip(), null, "a stub composer must not get a strip");
+  } finally {
+    await ext.close();
+  }
+});
+
+test("paints nothing on an auth / verification screen", async () => {
+  const ext = await loadExtension({
+    html: composerShell(672) + sidebarShell(),
+    model: { session: SPEND, sidebar: WEEKLY },
+    path: "/magic-link",
+  });
+  try {
+    assert.equal(ext.strip(), null, "no strip on a verification screen");
+    assert.equal(ext.card(), null, "no card on a verification screen");
+  } finally {
+    await ext.close();
+  }
+});
+
+test("removes an orphaned strip when the composer unmounts", async () => {
+  const ext = await loadExtension({ html: composerShell(672), model: { session: SPEND } });
+  try {
+    assert.ok(ext.strip(), "strip should be present to begin with");
+    // SPA navigates away: the composer goes, the strip must go with it.
+    ext.window.document.querySelector("form").remove();
+    await ext.settle();
+    assert.equal(ext.strip(), null, "strip must not survive its composer");
+  } finally {
+    await ext.close();
+  }
+});

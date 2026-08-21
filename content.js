@@ -138,9 +138,30 @@
     return /(^|\/)design(\/|$)/i.test(location.pathname);
   }
 
+  // Screens that are not the app: sign-in, magic-link/verification, sign-out,
+  // OAuth/SSO consent. They carry no composer and no side nav, but a cached
+  // model would still happily paint onto whatever stub they do render.
+  function isAppSurface() {
+    return !/^\/(login|logout|verify|magic|auth|oauth|sso)\b/i.test(location.pathname);
+  }
+
+  // Is this composer something we can safely pin the strip to? During the
+  // initial splash — and on auth/error screens — claude.ai renders a stub that
+  // is only a few px wide; pinning to it collapsed the strip into a tall pill
+  // with the text spilling outside it.
+  var MIN_COMPOSER_W = 280;
+  function isUsableComposer(el) {
+    if (!el || !el.parentElement) return false;
+    var r = el.getBoundingClientRect();
+    return r.width >= MIN_COMPOSER_W && r.height > 0;
+  }
+
   // The chat composer box (bordered container around the message input).
+  // Prefers the editable on the chat surface; the bare selector stays as a
+  // fallback so other composer surfaces (e.g. Design) still resolve.
   function findComposer() {
     var input =
+      document.querySelector('main div[contenteditable="true"]') ||
       document.querySelector('div[contenteditable="true"]') ||
       document.querySelector("main textarea");
     if (!input) return null;
@@ -273,7 +294,13 @@
       return;
     }
     var composer = isDesign ? findDesignComposer() : findComposer();
-    if (!composer || !composer.parentElement) return;
+    // No usable composer -> REMOVE any layer we left behind rather than
+    // returning. Returning here is what orphaned the strip on screens the SPA
+    // navigated to after the composer unmounted, leaving a broken pill behind.
+    if (!isUsableComposer(composer)) {
+      if (existing) existing.remove();
+      return;
+    }
     var sig = sigOf(payload) + "|" + marker;
     var layer = existing;
     if (!(existing && existing.dataset.cusSig === sig && existing.previousElementSibling === composer)) {
@@ -309,9 +336,22 @@
     _watchedNav = nav;
   }
 
+  function removeAllInjected() {
+    ["sidebar", "composer", "design"].forEach(function (k) {
+      var n = document.querySelector('[data-cus="' + k + '"]');
+      if (n) n.remove();
+    });
+  }
+
   function paint() {
     if (!lastData) return;
     applyTheme();
+    // Sign-in / verification / error screens: paint nothing, and clear anything
+    // already painted, so cached numbers can't linger over a splash screen.
+    if (!isAppSurface()) {
+      removeAllInjected();
+      return;
+    }
     watchNav();
     injectSidebar(lastData);
     if (isDesignPage()) {

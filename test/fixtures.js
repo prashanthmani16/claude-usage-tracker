@@ -115,8 +115,25 @@ function legacySidebarShell() {
   ].join("");
 }
 
+
+// A chat surface with a composer. `width` drives the fake layout box: the real
+// composer measures ~672px, while the pre-boot splash renders a stub only a few
+// px wide (which used to collapse the strip into a tall pill).
+function composerShell(width, height) {
+  width = width == null ? 672 : width;
+  height = height == null ? 120 : height;
+  return [
+    "<main>",
+    '  <form data-rect="' + width + "," + height + '">',
+    '    <div contenteditable="true"></div>',
+    "  </form>",
+    "</main>",
+  ].join("");
+}
+
 module.exports = {
   bar,
+  composerShell,
   proMaxDialog,
   enterpriseDialog,
   teamDialog,

@@ -111,7 +111,7 @@ async function loadExtension(opts) {
 
   const dom = new JSDOM(
     `<!doctype html><html><body>${opts.html || ""}</body></html>`,
-    { url: "https://claude.ai/new", runScripts: "outside-only" }
+    { url: "https://claude.ai" + (opts.path || "/new"), runScripts: "outside-only" }
   );
   const { window } = dom;
 
@@ -130,6 +130,20 @@ async function loadExtension(opts) {
   });
 
   window.chrome = stubChrome({ "cus:model": model });
+
+  // jsdom has no layout engine, so every getBoundingClientRect() is zeros --
+  // which the composer's usability check reads as "unusable". Let fixtures
+  // declare their own box via data-rect="<width>,<height>".
+  window.Element.prototype.getBoundingClientRect = function () {
+    const spec = this.getAttribute && this.getAttribute("data-rect");
+    let w = 0, h = 0;
+    if (spec) {
+      const parts = spec.split(",");
+      w = Number(parts[0]) || 0;
+      h = Number(parts[1]) || 0;
+    }
+    return { width: w, height: h, top: 0, left: 0, right: w, bottom: h, x: 0, y: 0 };
+  };
 
   const root =
     window.document.querySelector("aside.dframe-sidebar") ||
@@ -151,6 +165,9 @@ async function loadExtension(opts) {
     window,
     dom,
     card: () => window.document.querySelector('[data-cus="sidebar"]'),
+    strip: () => window.document.querySelector('[data-cus="composer"]'),
+    // let a mutation-driven repaint land, then read the DOM again
+    settle: () => new Promise((r) => setTimeout(r, 40)),
     // content.js installs intervals, a MutationObserver and rAF repaints; let
     // any queued repaint drain BEFORE tearing the window down, otherwise a
     // callback fires against a closed window and throws. Closing stops the
