@@ -133,7 +133,7 @@ test("ENTERPRISE — spend strip, no card", async () => {
   assert.match(view.strip, /16% used/);
 });
 
-test("ENTERPRISE (full) — spend + credit parsed, Design kept separate", async () => {
+test("ENTERPRISE (full) — spend stays primary, credit + Design parsed not shown", async () => {
   const model = modelFor(enterpriseFullDialog());
 
   // The primary meter is the plan spend, NOT the Claude Code credit that
@@ -148,17 +148,16 @@ test("ENTERPRISE (full) — spend + credit parsed, Design kept separate", async 
   });
   assert.deepEqual(model.sidebar, [], "credit is not surfaced in the side nav");
 
-  // On a chat page: the spend strip, and no design strip.
+  // On a chat page: the spend strip.
   const chat = await render(model, "/new");
   assert.match(chat.strip, /Spend \$80\.65 \/ \$125\.00/);
-  assert.equal(chat.designStrip, null, "design must not paint on a chat page");
+  assert.equal(chat.designStrip, null, "design never paints as a second strip");
 
-  // On the design surface: the design strip instead, with "Expires" tidied off.
+  // Claude Design is a different product: nothing is painted there, not even
+  // the design allowance that this dialog exposes.
   const design = await render(model, "/design");
-  assert.equal(design.strip, null, "the session strip yields to design here");
-  assert.match(design.designStrip, /Claude Design/);
-  assert.match(design.designStrip, /99%/);
-  assert.match(design.designStrip, /July 18/);
+  assert.equal(design.strip, null, "no strip on Claude Design");
+  assert.equal(design.designStrip, null, "not even the design allowance");
 });
 
 /* ===== every plan survives the legacy progressbar DOM =================== */

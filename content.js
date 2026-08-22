@@ -4,7 +4,9 @@
  *  Builds and maintains the three injected pieces:
  *    1. Sidebar "Weekly Usage limits" card  (above the side nav's bottom tray)
  *    2. Current-session strip                (behind the chat composer)
- *    3. Claude Design meter                  (behind the design composer)
+ *
+ *  Claude Design (claude.ai/design) is a different product on the same origin
+ *  and is deliberately left alone — nothing is painted there.
  *
  *  Data comes from ClaudeUsageProvider.fetchUsage()  (see usage-provider.js).
  *
@@ -102,9 +104,7 @@
   }
 
   // 2 & 3. the strip row inside a stats layer
-  // `pctOnly` is about the PAYLOAD, not the surface: the Claude Design allowance
-  // shows a bare "N%", while a session/spend meter shows "N% used".
-  function buildStripRow(data, pctOnly) {
+  function buildStripRow(data) {
     var row = el("div", "cus-strip-row");
     var label =
       data.type === "spend"
@@ -118,19 +118,15 @@
     row.appendChild(el("span", "cus-strip-label", { text: label }));
     row.appendChild(makeBar(data.pct));
     row.appendChild(
-      el("span", "cus-strip-pct", { text: pctOnly ? data.pct + "%" : data.pct + "% used" })
+      el("span", "cus-strip-pct", { text: data.pct + "% used" })
     );
     row.appendChild(el("span", "cus-divider"));
     row.appendChild(makeReset(data.reset));
     return row;
   }
-  // The layer's class and marker follow the SURFACE (the design composer has its
-  // own geometry); the row's formatting follows the payload.
-  function buildStatsLayer(data, isDesignSurface, pctOnly) {
-    var layer = el("div", "cus cus-stats-layer" + (isDesignSurface ? " cus-stats-layer--design" : ""), {
-      attrs: { "data-cus": isDesignSurface ? "design" : "composer" },
-    });
-    layer.appendChild(buildStripRow(data, pctOnly));
+  function buildStatsLayer(data) {
+    var layer = el("div", "cus cus-stats-layer", { attrs: { "data-cus": "composer" } });
+    layer.appendChild(buildStripRow(data));
     return layer;
   }
 
@@ -153,9 +149,13 @@
    *  FINDERS  — adjust here if injection misses on the live site
    * ====================================================================== */
 
-  // Claude Design surface? (chooses design data + styling). Tweak if needed.
-  function isDesignPage() {
-    return /(^|\/)design(\/|$)/i.test(location.pathname);
+  // Claude Design (claude.ai/design) is a separate product that happens to share
+  // the origin, so the content script loads there too. Nothing is painted on it:
+  // these stats belong to claude.ai proper. Checked at runtime rather than with
+  // manifest exclude_matches, because the script has to keep running for an SPA
+  // navigation BACK to a chat page.
+  function isDesignSurface() {
+    return /^\/design(\/|$)/i.test(location.pathname);
   }
 
   // Screens that are not the app: sign-in, magic-link/verification, sign-out,
@@ -268,25 +268,6 @@
     return anchor && anchor.parentElement ? anchor : null;
   }
 
-  // The Claude Design composer is an inner input box nested inside a larger
-  // rounded "tray" card, with the template picker sitting between the two.
-  // Tucking the strip under the INNER box buries it behind the tray's own
-  // content, so expand outwards to the widest enclosing rounded card of the same
-  // width and tuck under that instead. Verified against the live design surface,
-  // where this walks from the input box out to `.om-tray-unit`.
-  function findDesignComposer() {
-    var node = findComposer();
-    if (!node) return null;
-    for (var i = 0; i < 5 && node.parentElement; i++) {
-      var p = node.parentElement;
-      var radius = parseInt(getComputedStyle(p).borderTopLeftRadius) || 0;
-      if (radius < 8) break; // left the rounded card
-      if (Math.abs(p.getBoundingClientRect().width - node.getBoundingClientRect().width) > 8) break;
-      node = p;
-    }
-    return node;
-  }
-
   /* =========================================================================
    *  INJECTION  (idempotent: cheap to re-run; replaces only when data changes)
    * ====================================================================== */
@@ -344,19 +325,14 @@
     } catch (e) {}
   }
 
-  function injectLayer(data, isDesign) {
-    var marker = isDesign ? "design" : "composer";
-    var existing = document.querySelector('[data-cus="' + marker + '"]');
-    // On the design surface prefer the Claude Design allowance, but fall back to
-    // the session/spend meter: most plans have no design allowance, and showing
-    // nothing at all there was read as the extension being broken.
-    var payload = isDesign ? data.design || data.session : data.session;
-    var pctOnly = isDesign && !!data.design;
+  function injectLayer(data) {
+    var existing = document.querySelector('[data-cus="composer"]');
+    var payload = data.session;
     if (!payload) {
       if (existing) existing.remove();
       return;
     }
-    var composer = isDesign ? findDesignComposer() : findComposer();
+    var composer = findComposer();
     // No usable composer -> REMOVE any layer we left behind rather than
     // returning. Returning here is what orphaned the strip on screens the SPA
     // navigated to after the composer unmounted, leaving a broken pill behind.
@@ -364,11 +340,11 @@
       if (existing) existing.remove();
       return;
     }
-    var sig = sigOf(payload) + "|" + marker;
+    var sig = sigOf(payload) + "|composer";
     var layer = existing;
     if (!(existing && existing.dataset.cusSig === sig && existing.previousElementSibling === composer)) {
       if (existing) existing.remove();
-      layer = buildStatsLayer(payload, isDesign, pctOnly);
+      layer = buildStatsLayer(payload);
       layer.dataset.cusSig = sig;
       composer.insertAdjacentElement("afterend", layer);
     }
@@ -409,23 +385,16 @@
   function paint() {
     if (!lastData) return;
     applyTheme();
-    // Sign-in / verification / error screens: paint nothing, and clear anything
-    // already painted, so cached numbers can't linger over a splash screen.
-    if (!isAppSurface()) {
+    // Sign-in / verification / error screens, and Claude Design: paint nothing,
+    // and clear anything already painted, so cached numbers can't linger over a
+    // splash screen or bleed into a product these stats don't belong to.
+    if (!isAppSurface() || isDesignSurface()) {
       removeAllInjected();
       return;
     }
     watchNav();
     injectSidebar(lastData);
-    if (isDesignPage()) {
-      var stray = document.querySelector('[data-cus="composer"]');
-      if (stray) stray.remove();
-      injectLayer(lastData, true);
-    } else {
-      var strayD = document.querySelector('[data-cus="design"]');
-      if (strayD) strayD.remove();
-      injectLayer(lastData, false);
-    }
+    injectLayer(lastData);
   }
 
   /* ---------------- lifecycle ---------------- */

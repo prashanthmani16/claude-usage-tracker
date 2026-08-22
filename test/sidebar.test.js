@@ -235,33 +235,38 @@ test("styles.css does not put the strip behind a negative z-index", () => {
   assert.deepEqual(bad, [], "a negative z-index is invisible inside an isolated composer");
 });
 
-test("design surface falls back to the session strip when there is no allowance", async () => {
+test("Claude Design paints NOTHING — these stats are for claude.ai only", async () => {
+  const { designComposerShell } = require("./fixtures");
+  // A full design DOM: its own composer tray AND a design allowance in the
+  // model. Neither may produce anything on this surface.
   const ext = await loadExtension({
-    html: composerShell(800, 140),
-    model: { session: SPEND, design: null },
+    html: designComposerShell() + sidebarShell(),
+    model: { session: SPEND, sidebar: WEEKLY, design: DESIGN },
     path: "/design",
   });
   try {
-    const layer = ext.designStrip();
-    assert.ok(layer, "the design surface must still show something");
-    assert.match(layer.textContent, /Spend \$80\.65 \/ \$125\.00/);
-    assert.match(layer.textContent, /65% used/, "a session/spend meter reads '% used'");
+    assert.equal(ext.strip(), null, "no composer strip on Claude Design");
+    assert.equal(ext.designStrip(), null, "and no design strip either");
+    assert.equal(ext.card(), null, "and no sidebar card");
+    assert.equal(
+      ext.window.document.querySelectorAll("[data-cus]").length,
+      0,
+      "nothing of ours may be in the DOM on Claude Design"
+    );
   } finally {
     await ext.close();
   }
 });
 
-test("design surface prefers the design allowance when the plan has one", async () => {
-  const ext = await loadExtension({
-    html: composerShell(800, 140),
-    model: { session: SPEND, design: DESIGN },
-    path: "/design",
-  });
+test("a strip painted on a chat page is removed when entering Claude Design", async () => {
+  // The SPA keeps the same document across the navigation, so whatever was
+  // already painted has to be cleaned up rather than left behind.
+  const ext = await loadExtension({ html: composerShell(672), model: { session: SPEND } });
   try {
-    const layer = ext.designStrip();
-    assert.match(layer.textContent, /Claude Design/);
-    assert.match(layer.textContent, /99%/);
-    assert.ok(!/% used/.test(layer.textContent), "the design allowance shows a bare %");
+    assert.ok(ext.strip(), "strip should be present on the chat page first");
+    ext.window.history.pushState({}, "", "/design");
+    await ext.settle();
+    assert.equal(ext.strip(), null, "strip must be removed on entering Claude Design");
   } finally {
     await ext.close();
   }
@@ -283,27 +288,6 @@ test("no card is injected on a surface with no side nav", async () => {
   }
 });
 
-test("design strip tucks under the OUTER tray card, not the inner input box", async () => {
-  const { designComposerShell } = require("./fixtures");
-  const ext = await loadExtension({
-    html: designComposerShell(),
-    model: { session: SPEND, design: DESIGN },
-    path: "/design",
-  });
-  try {
-    const layer = ext.designStrip();
-    assert.ok(layer, "expected the design strip");
-    const anchor = layer.previousElementSibling;
-    assert.match(
-      "" + anchor.className,
-      /om-tray-unit/,
-      `strip must follow the outer tray card, but followed ${anchor.className}`
-    );
-    assert.equal(layer.style.width, "800px", "and match the tray's width");
-  } finally {
-    await ext.close();
-  }
-});
 
 test("with no products row, the card still goes inside the tray", async () => {
   // Accounts without those products have no .df-products-block. The card must

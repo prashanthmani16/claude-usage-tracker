@@ -150,10 +150,6 @@ html.cus-theme-dark .cus {
   font-family: var(--cus-font);
   pointer-events: none; /* never intercept clicks meant for the composer */
 }
-.cus-stats-layer--design {
-  border-radius: 12px;
-  padding: 66px 9px 10px;
-}
 .cus-strip-row {
   display: flex;
   align-items: center;
