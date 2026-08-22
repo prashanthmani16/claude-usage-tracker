@@ -40,7 +40,7 @@ html.cus-theme-dark .cus {
 /* ---- shared: progress bar ---- */
 .cus-bar {
   flex: 1 1 auto;
-  min-width: 1px;
+  min-width: 24px; /* never degrade into a sliver, whatever the label measures */
   height: 6px;
   border-radius: 999px;
   background: var(--cus-track-card);
@@ -153,6 +153,16 @@ html.cus-theme-dark .cus {
   font-family: var(--cus-font);
   pointer-events: none; /* never intercept clicks meant for the composer */
 }
+/* Narrow composers: shed pieces instead of squeezing the bar. cus-w-sm drops the
+   label; cus-w-xs drops the timer as well (the percentage is shortened in JS at
+   the smallest sizes). The bar keeps the space that frees up. */
+.cus-stats-layer.cus-w-sm .cus-strip-label,
+.cus-stats-layer.cus-w-xs .cus-strip-label,
+.cus-stats-layer.cus-w-xs .cus-divider,
+.cus-stats-layer.cus-w-xs .cus-reset {
+  display: none;
+}
+
 .cus-strip-row {
   display: flex;
   align-items: center;

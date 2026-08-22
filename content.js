@@ -118,7 +118,15 @@
     row.appendChild(el("span", "cus-strip-label", { text: label }));
     row.appendChild(makeBar(data.pct));
     row.appendChild(
-      el("span", "cus-strip-pct", { text: pctOnly ? data.pct + "%" : data.pct + "% used" })
+      (function () {
+        // Both spellings ride along on the element; alignLayerToComposer() picks
+        // one once it knows how much room there actually is.
+        var full = pctOnly ? data.pct + "%" : data.pct + "% used";
+        var e = el("span", "cus-strip-pct", { text: full });
+        e.setAttribute("data-full", full);
+        e.setAttribute("data-short", data.pct + "%");
+        return e;
+      })()
     );
     row.appendChild(el("span", "cus-divider"));
     row.appendChild(makeReset(data.reset));
@@ -168,7 +176,10 @@
   // initial splash — and on auth/error screens — claude.ai renders a stub that
   // is only a few px wide; pinning to it collapsed the strip into a tall pill
   // with the text spilling outside it.
-  var MIN_COMPOSER_W = 280;
+  // A real composer, however narrow. The pre-boot splash stub is only a few px
+  // wide, so this still rejects it — but the Claude Design chat panel can be
+  // dragged well below 280px, and 280 was suppressing the strip entirely there.
+  var MIN_COMPOSER_W = 120;
   function isUsableComposer(el) {
     if (!el || !el.parentElement) return false;
     var r = el.getBoundingClientRect();
@@ -350,6 +361,25 @@
       var radius = Math.ceil(parseFloat(getComputedStyle(composer).borderBottomLeftRadius) || 0);
       var clipAt = Math.max(0, overlap - radius);
       layer.style.clipPath = clipAt > 0 ? "inset(" + clipAt + "px 0 0 0)" : "none";
+      // Drop pieces as the composer narrows, rather than squeezing the bar to a
+      // sliver. Measured on the live strip: the fixed content (label 89, "N%
+      // used" 57, divider, timer 57, gaps, padding) needs 280px on its own, so
+      // at the Claude Design panel's ~304px the bar was left about 24px. The
+      // thresholds are those measurements plus a 48px minimum for the bar.
+      var TIER_FULL = 330;  // label + bar + pct + timer
+      var TIER_BAR  = 230;  // drop the label
+      var TIER_MIN  = 150;  // drop the timer too; below this, shorten the pct
+      layer.classList.remove("cus-w-sm", "cus-w-xs");
+      if (cw < TIER_BAR) layer.classList.add("cus-w-xs");
+      else if (cw < TIER_FULL) layer.classList.add("cus-w-sm");
+      var pctEl = layer.querySelector(".cus-strip-pct");
+      if (pctEl) {
+        var wanted = cw < TIER_MIN
+          ? pctEl.getAttribute("data-short")
+          : pctEl.getAttribute("data-full");
+        if (wanted && pctEl.textContent !== wanted) pctEl.textContent = wanted;
+      }
+
       // Follow the composer's own corner radius (20px on claude.ai, 14px on the
       // Claude Design composer) so the two silhouettes agree.
       if (radius) {
@@ -386,6 +416,7 @@
       layer.dataset.cusSig = sig;
       composer.insertAdjacentElement("afterend", layer);
     }
+    watchComposer(composer);
     alignLayerToComposer(layer, composer); // keep aligned even when data is unchanged
   }
 
@@ -402,6 +433,19 @@
   // Repaint the instant the side nav resizes (collapse/expand). Without this the
   // card only re-evaluates on the 2s safety tick, so it lingers broken in the
   // narrow rail for a couple seconds before hiding.
+  // The Claude Design chat panel is drag-resizable, and a drag resizes the
+  // composer without firing a window resize — so the strip kept a stale width
+  // until the safety tick. Observe the composer itself.
+  var _composerRO = null, _watchedComposer = null;
+  function watchComposer(composer) {
+    if (typeof ResizeObserver === "undefined" || !composer) return;
+    if (composer === _watchedComposer) return;
+    if (!_composerRO) _composerRO = new ResizeObserver(schedule);
+    if (_watchedComposer) _composerRO.unobserve(_watchedComposer);
+    _composerRO.observe(composer);
+    _watchedComposer = composer;
+  }
+
   var _navRO = null, _watchedNav = null;
   function watchNav() {
     if (typeof ResizeObserver === "undefined") return;

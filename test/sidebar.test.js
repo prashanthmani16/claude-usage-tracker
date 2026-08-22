@@ -398,3 +398,68 @@ test("an existing z-index on the composer's wrapper is left alone", async () => 
     await ext.close();
   }
 });
+
+/* ---------------------------------------------------------------------------
+ * Narrow composers. The Claude Design chat panel is drag-resizable, and the
+ * fixed content (label 89px, "N% used" 57px, divider, timer 57px, gaps,
+ * padding) needs 280px on its own — so at that panel's ~304px the bar was left
+ * about 24px, and below 280px the strip did not render at all.
+ * ------------------------------------------------------------------------- */
+
+const tierOf = (strip) =>
+  strip.classList.contains("cus-w-xs") ? "xs"
+  : strip.classList.contains("cus-w-sm") ? "sm"
+  : "full";
+
+test("a narrow composer still gets a strip", async () => {
+  const ext = await loadExtension({ html: composerShell(200, 100), model: { session: SPEND } });
+  try {
+    assert.ok(ext.strip(), "200px wide must still render — 280 suppressed it entirely");
+  } finally {
+    await ext.close();
+  }
+});
+
+test("width tiers shed the label, then the timer, then shorten the percentage", async () => {
+  const cases = [
+    { w: 400, tier: "full", pct: /% used$/ },
+    { w: 300, tier: "sm", pct: /% used$/ },   // label dropped
+    { w: 200, tier: "xs", pct: /% used$/ },   // timer dropped too
+    { w: 130, tier: "xs", pct: /^\d+%$/ },    // percentage shortened
+  ];
+  for (const c of cases) {
+    const ext = await loadExtension({ html: composerShell(c.w, 100), model: { session: SPEND } });
+    try {
+      const strip = ext.strip();
+      assert.equal(tierOf(strip), c.tier, `${c.w}px should be tier ${c.tier}`);
+      assert.match(strip.querySelector(".cus-strip-pct").textContent, c.pct, `${c.w}px percentage`);
+    } finally {
+      await ext.close();
+    }
+  }
+});
+
+test("the splash stub is still rejected after lowering the minimum", async () => {
+  const ext = await loadExtension({ html: composerShell(48, 210), model: { session: SPEND } });
+  try {
+    assert.equal(ext.strip(), null, "a few-px pre-boot stub must never get a strip");
+  } finally {
+    await ext.close();
+  }
+});
+
+test("the composer is watched for resize, so panel drags re-align it", async () => {
+  const ext = await loadExtension({ html: composerShell(400, 100), model: { session: SPEND } });
+  try {
+    assert.equal(tierOf(ext.strip()), "full");
+    // simulate a panel drag: shrink the composer, then let a repaint land
+    const form = ext.window.document.querySelector("form");
+    form.setAttribute("data-rect", "200,100");
+    ext.window.document.body.appendChild(ext.window.document.createElement("span")); // nudge the observer
+    await ext.settle();
+    assert.equal(tierOf(ext.strip()), "xs", "the strip must re-tier when the composer narrows");
+    assert.equal(ext.strip().style.width, "200px", "and match the new width");
+  } finally {
+    await ext.close();
+  }
+});
