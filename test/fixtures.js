@@ -119,12 +119,15 @@ function legacySidebarShell() {
 // A chat surface with a composer. `width` drives the fake layout box: the real
 // composer measures ~672px, while the pre-boot splash renders a stub only a few
 // px wide (which used to collapse the strip into a tall pill).
-function composerShell(width, height) {
+function composerShell(width, height, radius) {
   width = width == null ? 672 : width;
   height = height == null ? 120 : height;
+  // claude.ai's composer has 20px rounded bottom corners; the strip has to stay
+  // visible across that band to fill the notches they leave.
+  var style = radius == null ? "" : ' style="border-bottom-left-radius:' + radius + 'px"';
   return [
     "<main>",
-    '  <form data-rect="' + width + "," + height + '">',
+    '  <form data-rect="' + width + "," + height + '"' + style + ">",
     '    <div contenteditable="true"></div>',
     "  </form>",
     "</main>",

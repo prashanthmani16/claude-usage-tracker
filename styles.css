@@ -145,7 +145,10 @@ html.cus-theme-dark .cus {
      code = 58px tuck + 12px visible gap − 1px border. */
   padding: 69px 18px 10px 18px;
   border: 1px solid var(--cus-layer-border);
-  border-radius: 20px;
+  /* Square at the top so the sides run straight up BEHIND the composer and fill
+     the notches left by its rounded bottom corners. With rounded top corners the
+     two shapes pinched in at the join and the outline visibly broke. */
+  border-radius: 0 0 20px 20px;
   background: var(--cus-layer-bg);
   font-family: var(--cus-font);
   pointer-events: none; /* never intercept clicks meant for the composer */

@@ -309,3 +309,33 @@ test("with no products row, the card still goes inside the tray", async () => {
     await ext.close();
   }
 });
+
+test("the clip keeps a band as tall as the composer's corner radius", async () => {
+  // Clipping flush to the composer's bottom edge removed the fill that covers
+  // the notches left by its rounded corners, and the outline visibly broke at
+  // the join. The clip must stop short by exactly the radius.
+  const ext = await loadExtension({
+    html: composerShell(672, 120, 20),
+    model: { session: SPEND },
+  });
+  try {
+    const clip = ext.strip().style.clipPath;
+    const inset = Number(/inset\((\d+)px/.exec(clip)?.[1]);
+    // composer bottom is at 120 in the stubbed layout, strip top at 0
+    assert.equal(inset, 100, `expected 120 - 20 = 100, got ${clip}`);
+  } finally {
+    await ext.close();
+  }
+});
+
+test("styles.css squares the strip's top corners", () => {
+  const css = require("node:fs").readFileSync(
+    require("node:path").join(__dirname, "..", "styles.css"), "utf8"
+  );
+  const rule = /\.cus-stats-layer \{[\s\S]*?\}/.exec(css)[0];
+  const radius = /border-radius:\s*([^;]+);/.exec(rule)[1].trim();
+  assert.equal(
+    radius, "0 0 20px 20px",
+    "rounded top corners pinch against the composer's rounded bottom corners"
+  );
+});

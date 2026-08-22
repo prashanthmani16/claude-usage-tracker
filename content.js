@@ -314,14 +314,20 @@
       layer.style.left = delta + "px"; // position:relative nudge (set in CSS)
       // CSS pulls the layer's top up behind the composer. That used to be hidden
       // with z-index:-1, but claude.ai now isolates the composer's container,
-      // which traps a negative z-index below the in-context backgrounds. So the
-      // layer paints normally and the overlapping strip of it is CLIPPED away --
-      // same look, no stacking games. Measured live, so it holds however tall
-      // the composer grows.
-      var overlap = Math.round(
-        composer.getBoundingClientRect().bottom - layer.getBoundingClientRect().top
-      );
-      layer.style.clipPath = overlap > 0 ? "inset(" + overlap + "px 0 0 0)" : "none";
+      // which traps a negative z-index below the in-context backgrounds. The
+      // composer itself carries z-index:1, so the layer already paints behind it
+      // — the clip is only here to bound what a change to THAT would expose.
+      //
+      // Keep a band as tall as the composer's corner radius: the layer has to
+      // stay visible right there to fill the notches left by the composer's
+      // rounded bottom corners, which is what makes the outline read as one
+      // continuous container. Clipping flush to the bottom edge instead left a
+      // visible break at the join.
+      var cRect = composer.getBoundingClientRect();
+      var overlap = Math.round(cRect.bottom - layer.getBoundingClientRect().top);
+      var radius = Math.ceil(parseFloat(getComputedStyle(composer).borderBottomLeftRadius) || 0);
+      var clipAt = Math.max(0, overlap - radius);
+      layer.style.clipPath = clipAt > 0 ? "inset(" + clipAt + "px 0 0 0)" : "none";
     } catch (e) {}
   }
 
