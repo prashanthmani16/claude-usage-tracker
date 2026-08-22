@@ -9,7 +9,7 @@
 
 /* ---- design tokens: LIGHT (default) ---- */
 .cus {
-  --cus-card-bg: #F1F1EE; /* Figma: solid card fill */
+  --cus-card-bg: #EDECE9; /* side-nav card fill */
   --cus-card-border: #d9d9d7;
   --cus-name: #373734;
   --cus-muted: #7b7a74;
@@ -26,7 +26,7 @@
 
 /* ---- design tokens: DARK ---- */
 html.cus-theme-dark .cus {
-  --cus-card-bg: #292928; /* dark: solid card fill */
+  --cus-card-bg: #1F1F1F; /* dark: side-nav card fill */
   --cus-card-border: #393937;
   --cus-name: #edebe6;
   --cus-muted: #a6a39b;

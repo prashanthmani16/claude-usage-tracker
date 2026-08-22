@@ -66,3 +66,11 @@ test("no innerHTML assignment in the shipped scripts (AMO rejects it)", () => {
     assert.deepEqual(hits, [], `${f} must not assign to innerHTML`);
   }
 });
+
+test("side-nav card fill matches the specified tokens", () => {
+  const css = fs.readFileSync(path.join(ROOT, "styles.css"), "utf8");
+  const light = /:root|\.cus \{([\s\S]*?)\}/.exec(css)[1];
+  const dark = /html\.cus-theme-dark \.cus \{([\s\S]*?)\}/.exec(css)[1];
+  assert.match(light, /--cus-card-bg:\s*#EDECE9/i, "light card fill");
+  assert.match(dark, /--cus-card-bg:\s*#1F1F1F/i, "dark card fill");
+});
