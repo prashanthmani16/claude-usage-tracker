@@ -26,19 +26,34 @@
     if (cls) e.className = cls;
     if (opts) {
       if (opts.text != null) e.textContent = opts.text;
-      if (opts.html != null) e.innerHTML = opts.html;
       if (opts.attrs) for (var k in opts.attrs) e.setAttribute(k, opts.attrs[k]);
     }
     return e;
   }
 
-  var STOPWATCH =
-    '<svg viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">' +
-    '<path d="M6.125 2H9.875M8 6.8V9.2M8 14C9.32608 14 10.5979 13.4943 11.5355 12.5941C12.4732 ' +
+  // Stopwatch glyph, built as SVG DOM rather than a markup string: assigning
+  // markup through innerHTML trips AMO's "unsafe assignment" check even when
+  // the value is a hard-coded constant.
+  var SVG_NS = "http://www.w3.org/2000/svg";
+  var STOPWATCH_PATH =
+    "M6.125 2H9.875M8 6.8V9.2M8 14C9.32608 14 10.5979 13.4943 11.5355 12.5941C12.4732 " +
     "11.6939 13 10.473 13 9.2C13 7.92696 12.4732 6.70606 11.5355 5.80589C10.5979 4.90571 9.32608 " +
     "4.4 8 4.4C6.67392 4.4 5.40215 4.90571 4.46447 5.80589C3.52678 6.70606 3 7.92696 3 9.2C3 " +
-    '10.473 3.52678 11.6939 4.46447 12.5941C5.40215 13.4943 6.67392 14 8 14Z" stroke="currentColor" ' +
-    'stroke-linecap="round" stroke-linejoin="round"/></svg>';
+    "10.473 3.52678 11.6939 4.46447 12.5941C5.40215 13.4943 6.67392 14 8 14Z";
+
+  function stopwatchIcon() {
+    var svg = document.createElementNS(SVG_NS, "svg");
+    svg.setAttribute("viewBox", "0 0 16 16");
+    svg.setAttribute("fill", "none");
+    svg.setAttribute("aria-hidden", "true");
+    var path = document.createElementNS(SVG_NS, "path");
+    path.setAttribute("d", STOPWATCH_PATH);
+    path.setAttribute("stroke", "currentColor");
+    path.setAttribute("stroke-linecap", "round");
+    path.setAttribute("stroke-linejoin", "round");
+    svg.appendChild(path);
+    return svg;
+  }
 
   /* ---------------- component builders ---------------- */
   function makeBar(pct) {
@@ -63,7 +78,8 @@
     return t;
   }
   function makeReset(text) {
-    var r = el("span", "cus-reset", { html: STOPWATCH });
+    var r = el("span", "cus-reset");
+    r.appendChild(stopwatchIcon());
     r.appendChild(el("span", null, { text: tidyReset(text) }));
     return r;
   }
@@ -86,7 +102,9 @@
   }
 
   // 2 & 3. the strip row inside a stats layer
-  function buildStripRow(data, isDesign) {
+  // `pctOnly` is about the PAYLOAD, not the surface: the Claude Design allowance
+  // shows a bare "N%", while a session/spend meter shows "N% used".
+  function buildStripRow(data, pctOnly) {
     var row = el("div", "cus-strip-row");
     var label =
       data.type === "spend"
@@ -100,17 +118,19 @@
     row.appendChild(el("span", "cus-strip-label", { text: label }));
     row.appendChild(makeBar(data.pct));
     row.appendChild(
-      el("span", "cus-strip-pct", { text: isDesign ? data.pct + "%" : data.pct + "% used" })
+      el("span", "cus-strip-pct", { text: pctOnly ? data.pct + "%" : data.pct + "% used" })
     );
     row.appendChild(el("span", "cus-divider"));
     row.appendChild(makeReset(data.reset));
     return row;
   }
-  function buildStatsLayer(data, isDesign) {
-    var layer = el("div", "cus cus-stats-layer" + (isDesign ? " cus-stats-layer--design" : ""), {
-      attrs: { "data-cus": isDesign ? "design" : "composer" },
+  // The layer's class and marker follow the SURFACE (the design composer has its
+  // own geometry); the row's formatting follows the payload.
+  function buildStatsLayer(data, isDesignSurface, pctOnly) {
+    var layer = el("div", "cus cus-stats-layer" + (isDesignSurface ? " cus-stats-layer--design" : ""), {
+      attrs: { "data-cus": isDesignSurface ? "design" : "composer" },
     });
-    layer.appendChild(buildStripRow(data, isDesign));
+    layer.appendChild(buildStripRow(data, pctOnly));
     return layer;
   }
 
@@ -198,7 +218,11 @@
   // row is absent for accounts without those products, whereas the tray always
   // holds the profile row.
   function findSidebarFooter() {
-    var root = findSidebarRoot() || document.body;
+    // No side nav at all on this surface (Claude Design has none). Without this
+    // the last-resort branch below anchored on <body> and stretched the card to
+    // the full page width, off-screen.
+    var root = findSidebarRoot();
+    if (!root) return null;
     // Current shell: sidebar body ends in .df-bottom-tray (products + profile).
     var tray = root.querySelector(".df-bottom-tray");
     if (tray) return tray;
@@ -231,14 +255,28 @@
     // Last resort: anchor on the bottom-most block of the sidebar body, so a
     // future rename of .df-footer-row degrades to "card at the bottom of the
     // sidebar" rather than no card at all (the failure this whole finder had).
-    var body = document.querySelector('[data-testid="sidebar"]') || root;
+    var body = root.querySelector('[data-testid="sidebar"]') || root;
     var anchor = body.querySelector(".df-bottom-tray") || body.lastElementChild;
     return anchor && anchor.parentElement ? anchor : null;
   }
 
-  // The Claude Design composer box (same heuristic — it also has an editable).
+  // The Claude Design composer is an inner input box nested inside a larger
+  // rounded "tray" card, with the template picker sitting between the two.
+  // Tucking the strip under the INNER box buries it behind the tray's own
+  // content, so expand outwards to the widest enclosing rounded card of the same
+  // width and tuck under that instead. Verified against the live design surface,
+  // where this walks from the input box out to `.om-tray-unit`.
   function findDesignComposer() {
-    return findComposer();
+    var node = findComposer();
+    if (!node) return null;
+    for (var i = 0; i < 5 && node.parentElement; i++) {
+      var p = node.parentElement;
+      var radius = parseInt(getComputedStyle(p).borderTopLeftRadius) || 0;
+      if (radius < 8) break; // left the rounded card
+      if (Math.abs(p.getBoundingClientRect().width - node.getBoundingClientRect().width) > 8) break;
+      node = p;
+    }
+    return node;
   }
 
   /* =========================================================================
@@ -262,7 +300,10 @@
       return;
     }
     var footer = findSidebarFooter();
-    if (!footer || !footer.parentElement) return;
+    if (!footer || !footer.parentElement) {
+      if (existing) existing.remove(); // e.g. navigating into Claude Design
+      return;
+    }
     var sig = sigOf(data.sidebar);
     if (existing && existing.dataset.cusSig === sig && existing.nextElementSibling === footer) return;
     if (existing) existing.remove();
@@ -282,13 +323,27 @@
       layer.style.left = "0px"; // reset before measuring natural position
       var delta = composer.getBoundingClientRect().left - layer.getBoundingClientRect().left;
       layer.style.left = delta + "px"; // position:relative nudge (set in CSS)
+      // CSS pulls the layer's top up behind the composer. That used to be hidden
+      // with z-index:-1, but claude.ai now isolates the composer's container,
+      // which traps a negative z-index below the in-context backgrounds. So the
+      // layer paints normally and the overlapping strip of it is CLIPPED away --
+      // same look, no stacking games. Measured live, so it holds however tall
+      // the composer grows.
+      var overlap = Math.round(
+        composer.getBoundingClientRect().bottom - layer.getBoundingClientRect().top
+      );
+      layer.style.clipPath = overlap > 0 ? "inset(" + overlap + "px 0 0 0)" : "none";
     } catch (e) {}
   }
 
   function injectLayer(data, isDesign) {
     var marker = isDesign ? "design" : "composer";
     var existing = document.querySelector('[data-cus="' + marker + '"]');
-    var payload = isDesign ? data.design : data.session;
+    // On the design surface prefer the Claude Design allowance, but fall back to
+    // the session/spend meter: most plans have no design allowance, and showing
+    // nothing at all there was read as the extension being broken.
+    var payload = isDesign ? data.design || data.session : data.session;
+    var pctOnly = isDesign && !!data.design;
     if (!payload) {
       if (existing) existing.remove();
       return;
@@ -305,7 +360,7 @@
     var layer = existing;
     if (!(existing && existing.dataset.cusSig === sig && existing.previousElementSibling === composer)) {
       if (existing) existing.remove();
-      layer = buildStatsLayer(payload, isDesign);
+      layer = buildStatsLayer(payload, isDesign, pctOnly);
       layer.dataset.cusSig = sig;
       composer.insertAdjacentElement("afterend", layer);
     }

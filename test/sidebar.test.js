@@ -178,3 +178,131 @@ test("removes an orphaned strip when the composer unmounts", async () => {
     await ext.close();
   }
 });
+
+test("the reset row's stopwatch is a real SVG element, not markup", async () => {
+  const ext = await loadExtension({
+    html: sidebarShell(),
+    model: { sidebar: WEEKLY },
+  });
+  try {
+    const reset = ext.card().querySelector(".cus-reset");
+    const svg = reset.querySelector("svg");
+    assert.ok(svg, "the stopwatch must be present");
+    assert.equal(svg.namespaceURI, "http://www.w3.org/2000/svg", "must be in the SVG namespace");
+    assert.ok(svg.querySelector("path"), "the glyph path must be there");
+    // the label must still be the reset row's only <span> child
+    assert.equal(reset.querySelectorAll(":scope > span").length, 1);
+  } finally {
+    await ext.close();
+  }
+});
+
+/* ---------------------------------------------------------------------------
+ * Regressions from claude.ai's composer redesign (Aug 2026):
+ *   - the composer is now wrapped in an `isolation: isolate` container, which
+ *     forms a stacking context and trapped the strip's z-index:-1 beneath the
+ *     in-context backgrounds -- painted, but invisible.
+ *   - the Claude Design surface has NO side nav, so the card's last-resort
+ *     anchor fell through to <body> and stretched full-page width.
+ *   - that surface also showed nothing at all when the plan has no design
+ *     allowance, because the design branch only ever rendered data.design.
+ * ------------------------------------------------------------------------- */
+
+const DESIGN = { name: "Claude Design", pct: 99, reset: "Expires July 18" };
+
+test("the strip clips its tucked top instead of hiding behind z-index", async () => {
+  const ext = await loadExtension({ html: composerShell(672), model: { session: SPEND } });
+  try {
+    const strip = ext.strip();
+    // must not opt back into the negative stacking layer
+    assert.notEqual(strip.style.zIndex, "-1");
+    // the part overlapping the composer is clipped away instead
+    assert.match(
+      strip.style.clipPath,
+      /^inset\(\d+px 0 0 0\)$/,
+      `expected an inset clip, got ${JSON.stringify(strip.style.clipPath)}`
+    );
+  } finally {
+    await ext.close();
+  }
+});
+
+test("styles.css does not put the strip behind a negative z-index", () => {
+  const css = require("node:fs").readFileSync(
+    require("node:path").join(__dirname, "..", "styles.css"), "utf8"
+  );
+  // strip comments first -- the explanation of this very fix mentions z-index:-1
+  const declarations = css.replace(/\/\*[\s\S]*?\*\//g, "");
+  const bad = declarations.split("\n").filter((l) => /z-index\s*:\s*-\d/.test(l));
+  assert.deepEqual(bad, [], "a negative z-index is invisible inside an isolated composer");
+});
+
+test("design surface falls back to the session strip when there is no allowance", async () => {
+  const ext = await loadExtension({
+    html: composerShell(800, 140),
+    model: { session: SPEND, design: null },
+    path: "/design",
+  });
+  try {
+    const layer = ext.designStrip();
+    assert.ok(layer, "the design surface must still show something");
+    assert.match(layer.textContent, /Spend \$80\.65 \/ \$125\.00/);
+    assert.match(layer.textContent, /65% used/, "a session/spend meter reads '% used'");
+  } finally {
+    await ext.close();
+  }
+});
+
+test("design surface prefers the design allowance when the plan has one", async () => {
+  const ext = await loadExtension({
+    html: composerShell(800, 140),
+    model: { session: SPEND, design: DESIGN },
+    path: "/design",
+  });
+  try {
+    const layer = ext.designStrip();
+    assert.match(layer.textContent, /Claude Design/);
+    assert.match(layer.textContent, /99%/);
+    assert.ok(!/% used/.test(layer.textContent), "the design allowance shows a bare %");
+  } finally {
+    await ext.close();
+  }
+});
+
+test("no card is injected on a surface with no side nav", async () => {
+  // Claude Design renders no side nav at all; the card used to land in <body>.
+  const ext = await loadExtension({
+    html: composerShell(800, 140),
+    model: { sidebar: WEEKLY, session: SPEND },
+    path: "/design",
+  });
+  try {
+    assert.equal(ext.card(), null, "no side nav -> no card anywhere");
+    const stray = ext.window.document.body.querySelector(':scope > [data-cus="sidebar"]');
+    assert.equal(stray, null, "and certainly not appended to <body>");
+  } finally {
+    await ext.close();
+  }
+});
+
+test("design strip tucks under the OUTER tray card, not the inner input box", async () => {
+  const { designComposerShell } = require("./fixtures");
+  const ext = await loadExtension({
+    html: designComposerShell(),
+    model: { session: SPEND, design: DESIGN },
+    path: "/design",
+  });
+  try {
+    const layer = ext.designStrip();
+    assert.ok(layer, "expected the design strip");
+    const anchor = layer.previousElementSibling;
+    assert.match(
+      "" + anchor.className,
+      /om-tray-unit/,
+      `strip must follow the outer tray card, but followed ${anchor.className}`
+    );
+    assert.equal(layer.style.width, "800px", "and match the tray's width");
+  } finally {
+    await ext.close();
+  }
+});

@@ -214,9 +214,25 @@ function enterpriseFullDialog(role) {
   ].join("");
 }
 
+
+// The Claude Design composer: an inner input box (bordered, rounded) nested in a
+// larger rounded tray card, with the template picker between them. Mirrors the
+// live structure, where the tray is `.om-tray-unit`.
+function designComposerShell() {
+  return [
+    '<div class="om-tray-unit" style="border-top-left-radius:17px" data-rect="800,440">',
+    '  <div class="inner-input" style="border-top-left-radius:16px;border-top-width:1px" data-rect="800,140">',
+    '    <div contenteditable="true"></div>',
+    "  </div>",
+    '  <div class="template-panel" data-rect="800,290"></div>',
+    "</div>",
+  ].join("");
+}
+
 module.exports = {
   bar,
   composerShell,
+  designComposerShell,
   freeDialog,
   proDialog,
   maxTierDialog,

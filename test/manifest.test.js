@@ -52,3 +52,17 @@ test("content-script files exist and are non-empty", () => {
     assert.ok(fs.statSync(p).size > 0, `${f} is empty`);
   }
 });
+
+test("no innerHTML assignment in the shipped scripts (AMO rejects it)", () => {
+  // Mozilla's linter flags "Unsafe assignment to innerHTML" on any assignment,
+  // even a hard-coded constant, and it can lead to rejection. Build DOM nodes
+  // instead (see stopwatchIcon() in content.js).
+  for (const f of ["content.js", "usage-provider.js"]) {
+    const src = fs.readFileSync(path.join(ROOT, f), "utf8");
+    const hits = src
+      .split("\n")
+      .map((line, i) => [i + 1, line])
+      .filter(([, line]) => /\.innerHTML\s*=/.test(line));
+    assert.deepEqual(hits, [], `${f} must not assign to innerHTML`);
+  }
+});

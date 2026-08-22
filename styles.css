@@ -135,7 +135,11 @@ html.cus-theme-dark .cus {
  * ========================================================== */
 .cus-stats-layer {
   position: relative;
-  z-index: -1; /* behind Claude's composer, above the page background */
+  /* No negative z-index: claude.ai wraps the composer in an
+     `isolation: isolate` container, which forms a stacking context and traps a
+     z-index:-1 child underneath the in-context backgrounds -- the strip was
+     being painted, but invisibly. It paints normally now, and the part that
+     tucks behind the composer is clipped away in JS instead. */
   margin: -58px 1px 0; /* pulled up so its top hides behind the composer */
   /* Strip insets: 18px sides, 10px bottom, 12px visible top. Top is 69px in
      code = 58px tuck + 12px visible gap − 1px border. */
