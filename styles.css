@@ -9,7 +9,7 @@
 
 /* ---- design tokens: LIGHT (default) ---- */
 .cus {
-  --cus-card-bg: #EDECE9; /* side-nav card fill */
+  --cus-card-bg: #F4F3F1; /* side-nav card fill */
   --cus-card-border: #d9d9d7;
   --cus-name: #373734;
   --cus-muted: #7b7a74;
