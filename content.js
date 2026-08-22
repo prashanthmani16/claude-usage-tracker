@@ -323,6 +323,27 @@
       // rounded bottom corners, which is what makes the outline read as one
       // continuous container. Clipping flush to the bottom edge instead left a
       // visible break at the join.
+      // In a conversation the composer sits inside a sticky footer whose
+      // disclaimer bar ("Claude is AI and can make mistakes") is an opaque LATER
+      // sibling at z-index 0, while the composer itself is at z-index 1. Our
+      // layer lives in the composer's wrapper at z-index auto — the same layer as
+      // the bar but earlier in the DOM — so the bar painted straight over it. The
+      // strip was there, just buried, and only in conversations: the home screen
+      // has no such bar, which is why it showed there.
+      //
+      // Lifting the wrapper into z-index 1 clears the bar. The composer keeps its
+      // own z-index:1 INSIDE the wrapper, so it still covers the layer's tucked
+      // top. Only touched when it is positioned (otherwise z-index does nothing)
+      // and has no z-index of its own, and re-applied on every paint so a React
+      // re-render cannot drop it.
+      var group = composer.parentElement;
+      if (group) {
+        var gs = getComputedStyle(group);
+        // "auto" in a browser, "" under jsdom -- both mean "no z-index of its own"
+        var noZ = gs.zIndex === "auto" || gs.zIndex === "";
+        if (gs.position !== "static" && noZ) group.style.zIndex = "1";
+      }
+
       var cRect = composer.getBoundingClientRect();
       var overlap = Math.round(cRect.bottom - layer.getBoundingClientRect().top);
       var radius = Math.ceil(parseFloat(getComputedStyle(composer).borderBottomLeftRadius) || 0);

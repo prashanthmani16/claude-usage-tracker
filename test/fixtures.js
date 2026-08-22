@@ -232,9 +232,31 @@ function designComposerShell() {
   ].join("");
 }
 
+
+// The CHAT view's composer: a sticky footer holding the composer's wrapper AND,
+// after it, the opaque disclaimer bar. The bar is a later sibling in the same
+// stacking layer, so it painted over the strip until the wrapper was lifted.
+function chatFooterShell() {
+  return [
+    "<main>",
+    '  <div class="sticky-footer" style="position:sticky;z-index:5">',
+    '    <div class="composer-group" style="position:relative">',
+    '      <form data-rect="768,100" style="border-bottom-left-radius:20px">',
+    '        <div contenteditable="true"></div>',
+    "      </form>",
+    "    </div>",
+    '    <div class="disclaimer-bar" style="position:relative;z-index:0;background:#FCFCFB" data-rect="768,72">',
+    "      Claude is AI and can make mistakes.",
+    "    </div>",
+    "  </div>",
+    "</main>",
+  ].join("");
+}
+
 module.exports = {
   bar,
   composerShell,
+  chatFooterShell,
   designComposerShell,
   freeDialog,
   proDialog,

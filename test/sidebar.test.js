@@ -339,3 +339,41 @@ test("styles.css squares the strip's top corners", () => {
     "rounded top corners pinch against the composer's rounded bottom corners"
   );
 });
+
+test("in a conversation, the strip clears the opaque disclaimer bar", async () => {
+  // The bar is an opaque later sibling in the same stacking layer as the
+  // composer's wrapper, so it buried the strip — visible on the home screen,
+  // invisible in a chat. The wrapper has to be lifted out of that layer.
+  const { chatFooterShell } = require("./fixtures");
+  const ext = await loadExtension({
+    html: chatFooterShell(),
+    model: { session: SPEND },
+    path: "/chat/abc123",
+  });
+  try {
+    const strip = ext.strip();
+    assert.ok(strip, "expected the strip in a conversation");
+    const group = strip.parentElement;
+    assert.match("" + group.className, /composer-group/, "strip lives in the composer's wrapper");
+    assert.equal(group.style.zIndex, "1", "the wrapper must be lifted above the disclaimer bar");
+  } finally {
+    await ext.close();
+  }
+});
+
+test("an existing z-index on the composer's wrapper is left alone", async () => {
+  const { chatFooterShell } = require("./fixtures");
+  const html = chatFooterShell().replace(
+    'class="composer-group" style="position:relative"',
+    'class="composer-group" style="position:relative;z-index:4"'
+  );
+  const ext = await loadExtension({ html, model: { session: SPEND }, path: "/chat/abc" });
+  try {
+    assert.equal(
+      ext.strip().parentElement.style.zIndex, "4",
+      "must not stomp a z-index the page set itself"
+    );
+  } finally {
+    await ext.close();
+  }
+});
