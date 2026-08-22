@@ -212,22 +212,30 @@
   // The element the card is inserted immediately BEFORE, which pins the card to
   // the bottom of the side nav rather than the top.
   //
-  // Preferred anchor is the whole bottom tray, so the card sits ABOVE it — above
-  // the products row ("Design") and the "<name> · <org>" profile row both. The
-  // tray is the right anchor rather than the products row itself because that
-  // row is absent for accounts without those products, whereas the tray always
-  // holds the profile row.
+  // The card goes INSIDE .df-bottom-tray, as its first child — above the
+  // products row ("Design") and the "<name> · <org>" profile row both. Being
+  // inside the tray matters for more than order: the divider above Design is
+  // the tray's own ::before, drawn at the tray's top edge, so a card inside the
+  // tray sits below that divider instead of above it. The result reads
+  // divider / card / Design / divider / profile.
   function findSidebarFooter() {
     // No side nav at all on this surface (Claude Design has none). Without this
     // the last-resort branch below anchored on <body> and stretched the card to
     // the full page width, off-screen.
     var root = findSidebarRoot();
     if (!root) return null;
-    // Current shell: sidebar body ends in .df-bottom-tray (products + profile).
+    // Current shell: first child of the tray, i.e. just above the products row.
+    var products = root.querySelector(".df-bottom-tray .df-products-block");
+    if (products) return products;
+    // No products row (accounts without those products): still inside the tray,
+    // just above the profile row, so the tray's divider stays above the card.
+    var footerInTray = root.querySelector(".df-bottom-tray .df-footer-row");
+    if (footerInTray) return footerInTray;
+    // Tray inner classes renamed: sit above the whole tray. Correct placement,
+    // though the tray's divider then falls below the card rather than above it.
     var tray = root.querySelector(".df-bottom-tray");
     if (tray) return tray;
-    // If the tray is ever renamed, fall back to sitting just above the profile
-    // row alone (below the products row, but still pinned to the bottom).
+    // Tray itself renamed: fall back to the profile row wherever it lives.
     var footer = root.querySelector(".df-footer-row");
     if (footer) return footer;
     // Legacy shells: anchor on the profile button, then climb to its row.

@@ -20,23 +20,21 @@ const WEEKLY = [
   { name: "Fable", pct: 0, reset: "You haven’t used Fable yet" },
 ];
 
-test("injects the card above the bottom tray in the CURRENT sidebar shell", async () => {
+test("injects the card as the tray's first child in the CURRENT sidebar shell", async () => {
   const ext = await loadExtension({ html: sidebarShell(), model: { sidebar: WEEKLY } });
   try {
     const card = ext.card();
     assert.ok(card, "expected a [data-cus=sidebar] card to be injected");
 
-    // Anchored immediately above the whole bottom tray, so it clears BOTH the
-    // products row ("Design") and the profile row.
+    // INSIDE the tray, immediately above the products row. The divider above
+    // Design is the tray's own ::before at its top edge, so a card inside the
+    // tray falls below that divider: divider / card / Design / divider / profile.
     const tray = ext.window.document.querySelector(".df-bottom-tray");
-    assert.equal(card.nextElementSibling, tray, "card must sit directly above .df-bottom-tray");
-    assert.equal(
-      card.parentElement.getAttribute("data-testid"),
-      "sidebar",
-      "card must be a direct child of the sidebar body, not inside the tray"
-    );
-    // Explicitly above Design, which is what makes this placement the intended one.
     const design = ext.window.document.querySelector(".df-products-block");
+    assert.equal(card.parentElement, tray, "card must be a child of .df-bottom-tray");
+    assert.equal(card.nextElementSibling, design, "card must sit directly above the products row");
+    assert.equal(tray.firstElementChild, card, "card must be the tray's first child");
+    // Still above Design in document order, which was the original requirement.
     assert.ok(
       card.compareDocumentPosition(design) & 4,
       "card must precede the Design products row in document order"
@@ -302,6 +300,27 @@ test("design strip tucks under the OUTER tray card, not the inner input box", as
       `strip must follow the outer tray card, but followed ${anchor.className}`
     );
     assert.equal(layer.style.width, "800px", "and match the tray's width");
+  } finally {
+    await ext.close();
+  }
+});
+
+test("with no products row, the card still goes inside the tray", async () => {
+  // Accounts without those products have no .df-products-block. The card must
+  // stay INSIDE the tray (above the profile row) so the tray's divider is still
+  // drawn above it rather than between it and the profile.
+  const shell = sidebarShell().replace(
+    '<div class="df-products-block"><a>Design</a></div>',
+    ""
+  );
+  const ext = await loadExtension({ html: shell, model: { sidebar: WEEKLY } });
+  try {
+    const card = ext.card();
+    const tray = ext.window.document.querySelector(".df-bottom-tray");
+    const footer = ext.window.document.querySelector(".df-footer-row");
+    assert.ok(card, "expected a card");
+    assert.equal(card.parentElement, tray, "card must still be inside the tray");
+    assert.equal(card.nextElementSibling, footer, "and sit directly above the profile row");
   } finally {
     await ext.close();
   }
