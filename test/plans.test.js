@@ -133,7 +133,7 @@ test("ENTERPRISE — spend strip, no card", async () => {
   assert.match(view.strip, /16% used/);
 });
 
-test("ENTERPRISE (full) — spend stays primary, credit + Design parsed not shown", async () => {
+test("ENTERPRISE (full) — spend primary on chat, Design on its own surface", async () => {
   const model = modelFor(enterpriseFullDialog());
 
   // The primary meter is the plan spend, NOT the Claude Code credit that
@@ -153,11 +153,11 @@ test("ENTERPRISE (full) — spend stays primary, credit + Design parsed not show
   assert.match(chat.strip, /Spend \$80\.65 \/ \$125\.00/);
   assert.equal(chat.designStrip, null, "design never paints as a second strip");
 
-  // Claude Design is a different product: nothing is painted there, not even
-  // the design allowance that this dialog exposes.
+  // On Claude Design the allowance takes over from the spend meter.
   const design = await render(model, "/design");
-  assert.equal(design.strip, null, "no strip on Claude Design");
-  assert.equal(design.designStrip, null, "not even the design allowance");
+  assert.match(design.strip, /Claude Design/);
+  assert.match(design.strip, /99%/);
+  assert.match(design.strip, /July 18/, '"Expires" is tidied off the reset');
 });
 
 /* ===== every plan survives the legacy progressbar DOM =================== */

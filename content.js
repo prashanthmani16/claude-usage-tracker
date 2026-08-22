@@ -104,7 +104,7 @@
   }
 
   // 2 & 3. the strip row inside a stats layer
-  function buildStripRow(data) {
+  function buildStripRow(data, pctOnly) {
     var row = el("div", "cus-strip-row");
     var label =
       data.type === "spend"
@@ -118,15 +118,15 @@
     row.appendChild(el("span", "cus-strip-label", { text: label }));
     row.appendChild(makeBar(data.pct));
     row.appendChild(
-      el("span", "cus-strip-pct", { text: data.pct + "% used" })
+      el("span", "cus-strip-pct", { text: pctOnly ? data.pct + "%" : data.pct + "% used" })
     );
     row.appendChild(el("span", "cus-divider"));
     row.appendChild(makeReset(data.reset));
     return row;
   }
-  function buildStatsLayer(data) {
+  function buildStatsLayer(data, pctOnly) {
     var layer = el("div", "cus cus-stats-layer", { attrs: { "data-cus": "composer" } });
-    layer.appendChild(buildStripRow(data));
+    layer.appendChild(buildStripRow(data, pctOnly));
     return layer;
   }
 
@@ -149,11 +149,10 @@
    *  FINDERS  — adjust here if injection misses on the live site
    * ====================================================================== */
 
-  // Claude Design (claude.ai/design) is a separate product that happens to share
-  // the origin, so the content script loads there too. Nothing is painted on it:
-  // these stats belong to claude.ai proper. Checked at runtime rather than with
-  // manifest exclude_matches, because the script has to keep running for an SPA
-  // navigation BACK to a chat page.
+  // Claude Design (claude.ai/design) is a separate product sharing this origin.
+  // It gets the strip too, but keyed to its own allowance: the Claude Design
+  // meter when the plan has one, otherwise the current session. It has no
+  // claude.ai side nav, so it never gets the card.
   function isDesignSurface() {
     return /^\/design(\/|$)/i.test(location.pathname);
   }
@@ -200,12 +199,14 @@
   // <aside class="dframe-sidebar"> wrapping a [data-testid="sidebar"] body; it
   // has no <nav> element at all. The older <nav> / [data-testid="menu-sidebar"]
   // selectors are kept last as fallbacks for stale builds.
+  // claude.ai's OWN side nav only. Other products on this origin ship their own
+  // <nav> — Claude Design has one for its component outline — and accepting a
+  // bare "nav" put the card inside it. The card is a claude.ai thing.
   function findSidebarRoot() {
     return (
       document.querySelector("aside.dframe-sidebar") ||
       document.querySelector('[data-testid="sidebar"]') ||
-      document.querySelector('[data-testid="menu-sidebar"]') ||
-      document.querySelector("nav")
+      document.querySelector('[data-testid="menu-sidebar"]')
     );
   }
 
@@ -349,12 +350,22 @@
       var radius = Math.ceil(parseFloat(getComputedStyle(composer).borderBottomLeftRadius) || 0);
       var clipAt = Math.max(0, overlap - radius);
       layer.style.clipPath = clipAt > 0 ? "inset(" + clipAt + "px 0 0 0)" : "none";
+      // Follow the composer's own corner radius (20px on claude.ai, 14px on the
+      // Claude Design composer) so the two silhouettes agree.
+      if (radius) {
+        layer.style.borderBottomLeftRadius = radius + "px";
+        layer.style.borderBottomRightRadius = radius + "px";
+      }
     } catch (e) {}
   }
 
   function injectLayer(data) {
     var existing = document.querySelector('[data-cus="composer"]');
-    var payload = data.session;
+    // On Claude Design show its own allowance when the plan has one; otherwise
+    // fall back to the session meter, which is what most plans have.
+    var onDesign = isDesignSurface();
+    var payload = onDesign && data.design ? data.design : data.session;
+    var pctOnly = onDesign && !!data.design; // the allowance reads as a bare "N%"
     if (!payload) {
       if (existing) existing.remove();
       return;
@@ -367,11 +378,11 @@
       if (existing) existing.remove();
       return;
     }
-    var sig = sigOf(payload) + "|composer";
+    var sig = sigOf(payload) + "|composer|" + (pctOnly ? "design" : "session");
     var layer = existing;
     if (!(existing && existing.dataset.cusSig === sig && existing.previousElementSibling === composer)) {
       if (existing) existing.remove();
-      layer = buildStatsLayer(payload);
+      layer = buildStatsLayer(payload, pctOnly);
       layer.dataset.cusSig = sig;
       composer.insertAdjacentElement("afterend", layer);
     }
@@ -412,10 +423,9 @@
   function paint() {
     if (!lastData) return;
     applyTheme();
-    // Sign-in / verification / error screens, and Claude Design: paint nothing,
-    // and clear anything already painted, so cached numbers can't linger over a
-    // splash screen or bleed into a product these stats don't belong to.
-    if (!isAppSurface() || isDesignSurface()) {
+    // Sign-in / verification / error screens: paint nothing, and clear anything
+    // already painted, so cached numbers can't linger over a splash screen.
+    if (!isAppSurface()) {
       removeAllInjected();
       return;
     }

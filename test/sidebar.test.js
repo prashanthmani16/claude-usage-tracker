@@ -235,38 +235,59 @@ test("styles.css does not put the strip behind a negative z-index", () => {
   assert.deepEqual(bad, [], "a negative z-index is invisible inside an isolated composer");
 });
 
-test("Claude Design paints NOTHING — these stats are for claude.ai only", async () => {
+test("Claude Design falls back to the session when the plan has no allowance", async () => {
+  // Team has no Claude Design allowance, so the design surface shows the
+  // session meter rather than nothing.
   const { designComposerShell } = require("./fixtures");
-  // A full design DOM: its own composer tray AND a design allowance in the
-  // model. Neither may produce anything on this surface.
   const ext = await loadExtension({
-    html: designComposerShell() + sidebarShell(),
-    model: { session: SPEND, sidebar: WEEKLY, design: DESIGN },
-    path: "/design",
+    html: designComposerShell(),
+    model: { session: SPEND, design: null },
+    path: "/design/p/abc123",
   });
   try {
-    assert.equal(ext.strip(), null, "no composer strip on Claude Design");
-    assert.equal(ext.designStrip(), null, "and no design strip either");
-    assert.equal(ext.card(), null, "and no sidebar card");
-    assert.equal(
-      ext.window.document.querySelectorAll("[data-cus]").length,
-      0,
-      "nothing of ours may be in the DOM on Claude Design"
-    );
+    const strip = ext.strip();
+    assert.ok(strip, "expected a strip on the design surface");
+    assert.match(strip.textContent, /Spend \$80\.65 \/ \$125\.00/);
+    assert.match(strip.textContent, /65% used/, "a session/spend meter reads '% used'");
   } finally {
     await ext.close();
   }
 });
 
-test("a strip painted on a chat page is removed when entering Claude Design", async () => {
-  // The SPA keeps the same document across the navigation, so whatever was
-  // already painted has to be cleaned up rather than left behind.
-  const ext = await loadExtension({ html: composerShell(672), model: { session: SPEND } });
+test("Claude Design shows its own allowance when the plan has one", async () => {
+  const { designComposerShell } = require("./fixtures");
+  const ext = await loadExtension({
+    html: designComposerShell(),
+    model: { session: SPEND, design: DESIGN },
+    path: "/design/p/abc123",
+  });
   try {
-    assert.ok(ext.strip(), "strip should be present on the chat page first");
-    ext.window.history.pushState({}, "", "/design");
-    await ext.settle();
-    assert.equal(ext.strip(), null, "strip must be removed on entering Claude Design");
+    const strip = ext.strip();
+    assert.match(strip.textContent, /Claude Design/);
+    assert.match(strip.textContent, /99%/);
+    assert.ok(!/% used/.test(strip.textContent), "the allowance reads as a bare %");
+  } finally {
+    await ext.close();
+  }
+});
+
+test("Claude Design never gets the card, even though it has its own <nav>", async () => {
+  // The design app ships <nav class="om-ds-outline-aside"> for its component
+  // outline. Accepting a bare <nav> put the card inside that list.
+  const { designComposerShell } = require("./fixtures");
+  const ext = await loadExtension({
+    html: '<nav class="om-ds-outline-aside"><a>Accordion</a><a>Button</a></nav>' + designComposerShell(),
+    model: { session: SPEND, sidebar: WEEKLY, design: DESIGN },
+    path: "/design/p/abc123",
+  });
+  try {
+    assert.ok(ext.strip(), "the strip is still expected here");
+    assert.equal(ext.card(), null, "but never the card");
+    assert.equal(
+      ext.window.document.querySelector("nav").querySelector('[data-cus="sidebar"]'),
+      null,
+      "and nothing of ours inside the design app's own nav"
+    );
   } finally {
     await ext.close();
   }
