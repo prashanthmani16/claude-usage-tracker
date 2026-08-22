@@ -320,10 +320,29 @@
   function alignLayerToComposer(layer, composer) {
     try {
       var cw = composer.getBoundingClientRect().width;
-      layer.style.width = cw + "px";
-      layer.style.left = "0px"; // reset before measuring natural position
-      var delta = composer.getBoundingClientRect().left - layer.getBoundingClientRect().left;
-      layer.style.left = delta + "px"; // position:relative nudge (set in CSS)
+      var parent = layer.parentElement;
+      var parentDisplay = parent ? getComputedStyle(parent).display : "block";
+      if (/flex|grid/.test(parentDisplay)) {
+        // Flex/grid parent: the layer's width does not follow the composer's, so
+        // pin it by measurement and nudge it into place.
+        layer.style.marginLeft = "";
+        layer.style.marginRight = "";
+        layer.style.width = cw + "px";
+        layer.style.left = "0px"; // reset before measuring natural position
+        var delta = composer.getBoundingClientRect().left - layer.getBoundingClientRect().left;
+        layer.style.left = delta + "px"; // position:relative nudge (set in CSS)
+      } else {
+        // Both boxes are block children of the same element, so mirroring the
+        // composer's own horizontal margins makes the browser keep them exactly
+        // the same width through every reflow — nothing to go stale. A pinned
+        // pixel width drifted whenever the drag-resizable Claude Design panel
+        // changed size: too narrow after widening, overflowing after narrowing.
+        var ccs = getComputedStyle(composer);
+        layer.style.marginLeft = ccs.marginLeft;
+        layer.style.marginRight = ccs.marginRight;
+        layer.style.width = "auto";
+        layer.style.left = "0px";
+      }
       // CSS pulls the layer's top up behind the composer. That used to be hidden
       // with z-index:-1, but claude.ai now isolates the composer's container,
       // which traps a negative z-index below the in-context backgrounds. The

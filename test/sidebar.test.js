@@ -133,7 +133,14 @@ test("paints the strip on a real chat surface", async () => {
   try {
     const strip = ext.strip();
     assert.ok(strip, "expected the composer strip on a normal chat page");
-    assert.equal(strip.style.width, "672px", "strip should match the composer width");
+    // Width is not pinned in px: the strip mirrors the composer's horizontal
+    // margins and lets the shared parent drive the width, so the two stay equal
+    // through any reflow. (Verified for real in a browser; jsdom has no layout.)
+    assert.equal(strip.style.width, "auto", "width must follow the parent, not a measurement");
+    const composer = ext.window.document.querySelector("form");
+    const ccs = ext.window.getComputedStyle(composer);
+    assert.equal(strip.style.marginLeft, ccs.marginLeft, "left margin mirrors the composer");
+    assert.equal(strip.style.marginRight, ccs.marginRight, "right margin mirrors the composer");
     assert.match(strip.textContent, /Spend \$80\.65 \/ \$125\.00/);
   } finally {
     await ext.close();
@@ -458,7 +465,7 @@ test("the composer is watched for resize, so panel drags re-align it", async () 
     ext.window.document.body.appendChild(ext.window.document.createElement("span")); // nudge the observer
     await ext.settle();
     assert.equal(tierOf(ext.strip()), "xs", "the strip must re-tier when the composer narrows");
-    assert.equal(ext.strip().style.width, "200px", "and match the new width");
+    assert.equal(ext.strip().style.width, "auto", "width still follows the parent, never pinned");
   } finally {
     await ext.close();
   }
