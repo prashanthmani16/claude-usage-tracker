@@ -28,6 +28,11 @@ deliberately not committed, because Chrome has no use for it:
 }
 ```
 
+The ID still reads `claude-usage-stats@...` even though the extension is now
+called Claude Usage Tracker. That is deliberate and must not be "fixed": AMO
+ties updates to the ID, so changing it would publish a second, unrelated add-on
+rather than an update. It is an identifier, never shown to users.
+
 AMO requires an explicit add-on ID for MV3, and `data_collection_permissions`
 for anything submitted since November 2025. `140`/`142` are the Firefox versions
 that introduced that key. Keep the ID stable — AMO ties updates to it.

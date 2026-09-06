@@ -1,5 +1,5 @@
 /* =============================================================================
- *  Claude Usage Stats — content script (UI + injection)
+ *  Claude Usage Tracker — content script (UI + injection)
  *  ---------------------------------------------------------------------------
  *  Builds and maintains the three injected pieces:
  *    1. Sidebar "Weekly Usage limits" card  (above the side nav's bottom tray)
@@ -20,7 +20,7 @@
  * ========================================================================== */
 (function () {
   "use strict";
-  var TAG = "[ClaudeUsageStats]";
+  var TAG = "[ClaudeUsageTracker]";
 
   /* ---------------- tiny DOM helper ---------------- */
   function el(tag, cls, opts) {

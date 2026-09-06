@@ -1,8 +1,8 @@
-# Privacy Policy — Claude Usage Stats
+# Privacy Policy — Claude Usage Tracker
 
 _Last updated: July 2026_
 
-Claude Usage Stats is a browser extension that displays your Claude usage (limits, current session/spend, reset times) directly on **claude.ai**.
+Claude Usage Tracker is a browser extension that displays your Claude usage (limits, current session/spend, reset times) directly on **claude.ai**.
 
 ## We do not collect your data
 

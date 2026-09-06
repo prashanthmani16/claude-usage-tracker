@@ -74,3 +74,8 @@ test("side-nav card fill matches the specified tokens", () => {
   assert.match(light, /--cus-card-bg:\s*#F4F3F1/i, "light card fill");
   assert.match(dark, /--cus-card-bg:\s*#1F1F1F/i, "dark card fill");
 });
+
+test("extension name is Claude Usage Tracker", () => {
+  const m = JSON.parse(fs.readFileSync(path.join(ROOT, "manifest.json"), "utf8"));
+  assert.equal(m.name, "Claude Usage Tracker");
+});

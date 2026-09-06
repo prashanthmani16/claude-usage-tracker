@@ -1,8 +1,8 @@
-# Claude Usage Stats
+# Claude Usage Tracker
 
 A browser extension that surfaces your Claude usage right on **claude.ai**, so you don't have to dig into Settings.
 
-![Claude Usage Stats — overview](screenshots/overview.png)
+![Claude Usage Tracker — overview](screenshots/overview.png)
 
 It shows:
 - a **Usage limits** card in the sidebar (weekly limits on Pro/Max/Team),

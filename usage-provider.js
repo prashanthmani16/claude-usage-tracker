@@ -1,5 +1,5 @@
 /* =============================================================================
- *  Claude Usage Stats — DATA PROVIDER  (real-data background auto-pull)
+ *  Claude Usage Tracker — DATA PROVIDER  (real-data background auto-pull)
  *  ===========================================================================
  *  content.js calls ClaudeUsageProvider.fetchUsage() and renders whatever it
  *  returns. This file is the data layer: it reads your REAL usage numbers off
