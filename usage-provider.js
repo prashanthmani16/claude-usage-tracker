@@ -56,8 +56,51 @@
       design: { name: "Claude Design", pct: 99, reset: "Expires July 18" } },
   };
 
+  /* ===== 0b. which organisation these numbers belong to ================
+   * One account can hold several organisations with completely separate limits
+   * (a Team and an Enterprise, say). Cached numbers therefore belong to ONE of
+   * them, and showing them after a switch shows the wrong plan's usage.
+   * ================================================================== */
+  function orgKey() {
+    // Preferred: whatever claude.ai itself uses to remember the active org.
+    try {
+      const jar = (document.cookie || "").split(";");
+      const named = {};
+      for (const part of jar) {
+        const i = part.indexOf("=");
+        if (i < 0) continue;
+        named[part.slice(0, i).trim()] = part.slice(i + 1).trim();
+      }
+      for (const name of ["lastActiveOrg", "activeOrg", "activeOrganization", "organizationId"]) {
+        if (named[name]) return "c:" + named[name];
+      }
+      // Cookie names change; fall back to any that looks organisation-ish.
+      for (const name of Object.keys(named)) {
+        if (/org/i.test(name) && named[name]) return "c:" + name + "=" + named[name];
+      }
+    } catch (_) {}
+    // Last resort: the org label the user actually sees in the profile row. It
+    // changes on a switch, which is exactly the signal needed.
+    try {
+      const row = document.querySelector(".df-footer-row");
+      const t = row && (row.textContent || "").replace(/\s+/g, " ").trim();
+      if (t) return "l:" + t;
+    } catch (_) {}
+    return "";
+  }
+
+  // Unknown on either side means "don't fight it" — better to show numbers than
+  // to blank the UI because an org could not be identified.
+  function orgMatches(m) {
+    if (!m) return false;
+    const cur = orgKey();
+    if (!m.org || !cur) return true;
+    return m.org === cur;
+  }
+
   /* ===== 1. storage cache + cross-tab sync ============================= */
-  const KEY = "cus:model";
+  const KEY = "cus:model";      // most recent, whichever org it belongs to
+  const ARCHIVE = "cus:models"; // { [org]: model } so a switch back is instant
   // Adaptive cadence. Each refresh boots claude.ai's app inside an iframe, which
   // is far too costly to run on a tight fixed timer — but the numbers only move
   // while someone is actually working. So poll quickly for a few minutes after
@@ -74,19 +117,38 @@
 
   function read() {
     return new Promise((res) => {
-      try { chrome.storage.local.get(KEY, (o) => res((o && o[KEY]) || null)); }
-      catch (_) { res(null); }
+      try {
+        chrome.storage.local.get([KEY, ARCHIVE], (o) => {
+          const latest = (o && o[KEY]) || null;
+          if (orgMatches(latest)) return res(latest);
+          // Latest belongs to the org we just switched away from; the previous
+          // numbers for THIS org are better than nothing while a pull runs.
+          const arch = (o && o[ARCHIVE]) || {};
+          res(arch[orgKey()] || null);
+        });
+      } catch (_) { res(null); }
     });
   }
   function write(model) {
     return new Promise((res) => {
-      try { chrome.storage.local.set({ [KEY]: model }, res); } catch (_) { res(); }
+      try {
+        chrome.storage.local.get(ARCHIVE, (o) => {
+          const arch = (o && o[ARCHIVE]) || {};
+          if (model && model.org) arch[model.org] = model;
+          const patch = {};
+          patch[KEY] = model;
+          patch[ARCHIVE] = arch;
+          chrome.storage.local.set(patch, res);
+        });
+      } catch (_) { res(); }
     });
   }
   function onChange(cb) {
     try {
       chrome.storage.onChanged.addListener((ch, area) => {
-        if (area === "local" && ch[KEY]) cb(ch[KEY].newValue || null);
+        if (area !== "local" || !ch[KEY]) return;
+        const m = ch[KEY].newValue || null;
+        if (orgMatches(m)) cb(m); // ignore a sibling tab refreshing another org
       });
     } catch (_) {}
   }
@@ -202,14 +264,14 @@
   }
 
   // Only rewrite storage when the numbers actually changed (avoids re-render loops).
-  const sigOf = (m) => JSON.stringify({ p: m.plan, s: m.session, w: m.sidebar, d: m.design });
+  const sigOf = (m) => JSON.stringify({ o: m.org, p: m.plan, s: m.session, w: m.sidebar, d: m.design });
   let lastSig = null;
   async function commit(base) {
     if (!base) return null;
-    const sig = sigOf(base);
+    const sig = sigOf(Object.assign({ org: orgKey() }, base));
     if (sig === lastSig) return null;
     lastSig = sig;
-    const model = Object.assign({}, base, { source: "scraped", updatedAt: Date.now() });
+    const model = Object.assign({}, base, { org: orgKey(), source: "scraped", updatedAt: Date.now() });
     await write(model);
     return model;
   }
@@ -371,6 +433,8 @@
     if (USE_MOCK || document.hidden) return;
     if (usageDialogIn(document)) { await scrapeUsage(); return; } // panel open -> scrape directly
     const m = await read();
+    // A switch makes even a seconds-old cache wrong, so refresh regardless of age.
+    if (m && !orgMatches(m)) { await pullUsage({ minGapMs: 0 }); return; }
     if (isStale(m, freshnessMs())) await pullUsage();
   }
 
@@ -416,6 +480,7 @@
     parseUsageDialog,
     detectPlanFromDOM,
     refreshSoon,
+    orgKey,
     isUserTyping,
     captureFocus,
     restoreFocus,

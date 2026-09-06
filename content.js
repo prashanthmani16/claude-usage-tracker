@@ -441,6 +441,26 @@
 
   /* ---------------- orchestration ---------------- */
   var lastData = null;
+
+  // Switching organisation swaps the whole set of limits. Watch for it directly
+  // rather than waiting for the next background tick: re-read storage (which
+  // keeps the last numbers seen for each org, so the correct plan appears at
+  // once) and ask for a fresh pull on top.
+  var _orgSeen = null;
+  function watchOrgSwitch() {
+    var P = window.ClaudeUsageProvider;
+    if (!P || !P.orgKey) return;
+    var cur = P.orgKey();
+    if (!cur) return;
+    if (_orgSeen === null) { _orgSeen = cur; return; }
+    if (cur === _orgSeen) return;
+    _orgSeen = cur;
+    removeAllInjected();          // never leave the other plan's numbers up
+    refreshData().then(function () {
+      paint();
+      if (P.refreshSoon) P.refreshSoon(0);
+    });
+  }
   async function refreshData() {
     try {
       lastData = await window.ClaudeUsageProvider.fetchUsage();
@@ -484,7 +504,7 @@
   }
 
   function paint() {
-    if (!lastData) return;
+    if (!lastData) { removeAllInjected(); return; }
     applyTheme();
     // Sign-in / verification / error screens: paint nothing, and clear anything
     // already painted, so cached numbers can't linger over a splash screen.
@@ -570,6 +590,7 @@
     // refresh numbers over time + safety re-paint in case a mutation was missed
     setInterval(async function () { await refreshData(); paint(); }, 60 * 1000);
     setInterval(schedule, 2000);
+    setInterval(watchOrgSwitch, 1000); // notice a plan switch within a second
   }
 
   if (document.readyState === "loading") {

@@ -136,3 +136,73 @@ test("restoring focus to a removed element does not throw", () => {
     window.close();
   }
 });
+
+/* ---------------------------------------------------------------------------
+ * Organisation switching. One account can hold several orgs with separate
+ * limits (a Team and an Enterprise), so cached numbers belong to exactly one of
+ * them and must never be shown under another.
+ * ------------------------------------------------------------------------- */
+
+function withOrgLabel(window, label) {
+  window.document.body.innerHTML =
+    '<div class="df-footer-row"><button>MB</button><span>' + label + "</span></div>";
+}
+
+test("numbers cached under one org are not served to another", async () => {
+  const { window, provider, chrome } = loadProvider();
+  try {
+    withOrgLabel(window, "Manikandan B · Zohocorp");
+    const teamOrg = provider.orgKey();
+    assert.ok(teamOrg, "an org key must be derivable from the profile row");
+
+    chrome.__store["cus:model"] = {
+      org: teamOrg, plan: "team", sidebar: [], session: { type: "session", pct: 7 },
+      updatedAt: Date.now(),
+    };
+    assert.equal((await provider.fetchUsage()).plan, "team", "same org: served");
+
+    withOrgLabel(window, "Manikandan B · Zoho India");
+    assert.notEqual(provider.orgKey(), teamOrg, "the switch must change the key");
+    assert.equal(await provider.fetchUsage(), null, "other org's numbers must not be served");
+  } finally {
+    window.close();
+  }
+});
+
+test("switching back serves that org's last numbers immediately", async () => {
+  const { window, provider, chrome } = loadProvider();
+  try {
+    withOrgLabel(window, "Manikandan B · Zohocorp");
+    const team = provider.orgKey();
+    withOrgLabel(window, "Manikandan B · Zoho India");
+    const ent = provider.orgKey();
+
+    // both orgs have been seen before, so both sit in the archive
+    chrome.__store["cus:models"] = {
+      [team]: { org: team, plan: "team", session: { type: "session", pct: 7 }, updatedAt: Date.now() },
+      [ent]: { org: ent, plan: "enterprise", session: { type: "spend", pct: 65 }, updatedAt: Date.now() },
+    };
+    chrome.__store["cus:model"] = chrome.__store["cus:models"][ent];
+
+    assert.equal((await provider.fetchUsage()).plan, "enterprise", "current org from the latest slot");
+
+    withOrgLabel(window, "Manikandan B · Zohocorp");
+    const back = await provider.fetchUsage();
+    assert.ok(back, "switching back must not blank out");
+    assert.equal(back.plan, "team", "and must serve that org's own numbers");
+  } finally {
+    window.close();
+  }
+});
+
+test("a model with no org attached is still served (unknown identity)", async () => {
+  const { window, provider, chrome } = loadProvider();
+  try {
+    chrome.__store["cus:model"] = { plan: "pro", session: { type: "session", pct: 5 }, updatedAt: Date.now() };
+    const m = await provider.fetchUsage();
+    assert.ok(m, "an unidentifiable org must not blank the UI");
+    assert.equal(m.plan, "pro");
+  } finally {
+    window.close();
+  }
+});

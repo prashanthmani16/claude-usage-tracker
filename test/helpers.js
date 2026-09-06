@@ -27,8 +27,12 @@ function stubChrome(store) {
     storage: {
       local: {
         get(key, cb) {
+          // the real API accepts a string, an array of keys, or an object of
+          // key->default; the provider reads several keys at once
           const o = {};
-          if (store[key] !== undefined) o[key] = store[key];
+          const keys = Array.isArray(key) ? key : key == null ? Object.keys(store)
+                     : typeof key === "object" ? Object.keys(key) : [key];
+          for (const k of keys) if (store[k] !== undefined) o[k] = store[k];
           cb(o);
         },
         set(obj, cb) {
