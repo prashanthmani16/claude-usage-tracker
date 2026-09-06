@@ -520,6 +520,34 @@
     if (window.ClaudeUsageProvider.startBackground)
       window.ClaudeUsageProvider.startBackground();
 
+    // Usage moves when a message is SENT, so refresh on that event instead of
+    // only waiting for the next background tick. Covers both ways to send:
+    // Enter (without Shift/IME composition) in the composer, and the send button.
+    function noteSend() {
+      if (window.ClaudeUsageProvider.refreshSoon) window.ClaudeUsageProvider.refreshSoon();
+    }
+    document.addEventListener(
+      "keydown",
+      function (e) {
+        if (e.key !== "Enter" || e.shiftKey || e.altKey || e.isComposing) return;
+        var t = e.target;
+        if (!t || !(t.isContentEditable || /^(TEXTAREA|INPUT)$/i.test(t.tagName || ""))) return;
+        if (!findComposer() || !findComposer().contains(t)) return;
+        noteSend();
+      },
+      true
+    );
+    document.addEventListener(
+      "click",
+      function (e) {
+        var el = e.target && e.target.closest && e.target.closest("button");
+        if (!el) return;
+        var label = (el.getAttribute("aria-label") || "") + " " + (el.getAttribute("data-testid") || "");
+        if (/send/i.test(label)) noteSend();
+      },
+      true
+    );
+
     // re-inject as Claude re-renders / navigates
     new MutationObserver(schedule).observe(document.body, { childList: true, subtree: true });
 

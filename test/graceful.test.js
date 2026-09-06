@@ -61,3 +61,78 @@ test("detectPlanFromDOM falls back via page body text", () => {
   window.document.body.innerHTML = "<div>nothing relevant</div>";
   assert.equal(provider.detectPlanFromDOM(), "pro"); // safe default
 });
+
+/* ---------------------------------------------------------------------------
+ * Refresh must never fight the user for focus. The refresh iframe loads
+ * claude.ai's own app, which autofocuses its composer; focusing inside a
+ * same-origin iframe moves the browser's focus there, yanking the caret out of
+ * whatever was being typed.
+ * ------------------------------------------------------------------------- */
+
+test("a refresh is deferred while the user is actively typing", async () => {
+  const { window, provider } = loadProvider();
+  try {
+    const input = window.document.createElement("textarea");
+    window.document.body.appendChild(input);
+    input.focus();
+
+    // no recent keystroke -> not considered typing, even with focus held
+    assert.equal(provider.isUserTyping(), false, "idle focus must not block refreshes");
+
+    // a keystroke starts a typing burst
+    window.document.dispatchEvent(
+      new window.KeyboardEvent("keydown", { key: "a", bubbles: true })
+    );
+    assert.equal(provider.isUserTyping(), true, "mid-burst typing must block refreshes");
+
+    // and the pull bails out without ever creating its iframe
+    const before = window.document.querySelectorAll("iframe").length;
+    const result = await provider.pullUsage({ minGapMs: 0 });
+    assert.equal(result, null, "pull must defer, not run");
+    assert.equal(
+      window.document.querySelectorAll("iframe").length,
+      before,
+      "no iframe may be created while typing"
+    );
+  } finally {
+    window.close();
+  }
+});
+
+test("focus and caret are restored after being taken away", () => {
+  const { window, provider } = loadProvider();
+  try {
+    const input = window.document.createElement("textarea");
+    input.value = "half-written sentence";
+    window.document.body.appendChild(input);
+    const other = window.document.createElement("textarea");
+    window.document.body.appendChild(other);
+
+    input.focus();
+    input.setSelectionRange(5, 5);
+    const snap = provider.captureFocus();
+
+    other.focus(); // stand-in for the iframe stealing focus
+    assert.equal(window.document.activeElement, other);
+
+    provider.restoreFocus(snap);
+    assert.equal(window.document.activeElement, input, "focus must come back");
+    assert.equal(input.selectionStart, 5, "and the caret with it");
+  } finally {
+    window.close();
+  }
+});
+
+test("restoring focus to a removed element does not throw", () => {
+  const { window, provider } = loadProvider();
+  try {
+    const input = window.document.createElement("textarea");
+    window.document.body.appendChild(input);
+    input.focus();
+    const snap = provider.captureFocus();
+    input.remove(); // the composer unmounted mid-refresh
+    assert.doesNotThrow(() => provider.restoreFocus(snap));
+  } finally {
+    window.close();
+  }
+});

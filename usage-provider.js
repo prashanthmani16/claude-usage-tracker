@@ -58,7 +58,19 @@
 
   /* ===== 1. storage cache + cross-tab sync ============================= */
   const KEY = "cus:model";
-  const FRESH_MS = 30 * 1000; // pull fresh numbers when the cache is older than this
+  // Adaptive cadence. Each refresh boots claude.ai's app inside an iframe, which
+  // is far too costly to run on a tight fixed timer — but the numbers only move
+  // while someone is actually working. So poll quickly for a few minutes after
+  // any activity and back off hard when the tab is just sitting open.
+  const FRESH_ACTIVE_MS = 15 * 1000;
+  const FRESH_IDLE_MS = 90 * 1000;
+  const ACTIVE_WINDOW_MS = 3 * 60 * 1000;
+  const TICK_MS = 5 * 1000; // cheap check; the staleness gate below decides
+  let lastActivityAt = Date.now();
+  function freshnessMs() {
+    return Date.now() - lastActivityAt < ACTIVE_WINDOW_MS ? FRESH_ACTIVE_MS : FRESH_IDLE_MS;
+  }
+  function noteActivity() { lastActivityAt = Date.now(); }
 
   function read() {
     return new Promise((res) => {
@@ -214,15 +226,88 @@
     return base ? commit(base) : null;
   }
 
+  /* ===== 3b. focus protection ========================================
+   * The refresh iframe loads claude.ai's own app, which autofocuses its
+   * composer on boot. Focusing an element inside a same-origin iframe moves the
+   * browser's focus there, which yanked the caret out of whatever the user was
+   * typing in the real page. Two guards: don't start a refresh mid-keystroke,
+   * and put focus back if the iframe takes it anyway.
+   * ================================================================== */
+  const TYPING_IDLE_MS = 2500;
+  let lastTypedAt = 0;
+  try {
+    document.addEventListener(
+      "keydown",
+      function () { lastTypedAt = Date.now(); noteActivity(); },
+      { capture: true, passive: true }
+    );
+  } catch (_) {}
+
+  // Focus alone is not enough to defer on: claude.ai autofocuses the composer,
+  // so it holds focus almost permanently and refreshes would never run. Defer
+  // only during an actual burst of typing.
+  function isUserTyping() {
+    if (Date.now() - lastTypedAt > TYPING_IDLE_MS) return false;
+    const el = document.activeElement;
+    if (!el) return false;
+    if (el.isContentEditable) return true;
+    const tag = (el.tagName || "").toUpperCase();
+    return tag === "TEXTAREA" || tag === "INPUT";
+  }
+
+  function captureFocus() {
+    const el = document.activeElement;
+    if (!el || el === document.body) return null;
+    const snap = { el: el, range: null, start: null, end: null };
+    try {
+      if ("selectionStart" in el && el.selectionStart != null) {
+        snap.start = el.selectionStart;
+        snap.end = el.selectionEnd;
+      }
+    } catch (_) {}
+    try {
+      const sel = window.getSelection();
+      if (sel && sel.rangeCount) snap.range = sel.getRangeAt(0).cloneRange();
+    } catch (_) {}
+    return snap;
+  }
+
+  function restoreFocus(snap) {
+    if (!snap || !snap.el || !snap.el.isConnected) return;
+    try { snap.el.focus({ preventScroll: true }); } catch (_) {
+      try { snap.el.focus(); } catch (__) {}
+    }
+    try {
+      if (snap.start != null && typeof snap.el.setSelectionRange === "function") {
+        snap.el.setSelectionRange(snap.start, snap.end);
+      } else if (snap.range) {
+        const sel = window.getSelection();
+        sel.removeAllRanges();
+        sel.addRange(snap.range);
+      }
+    } catch (_) {}
+  }
+
   /* ===== 4. active pull (hidden same-origin iframe) =================== */
-  let pulling = false, lastPullAt = 0;
+  let pulling = false, lastPullAt = 0, deferredRetry = null;
   async function pullUsage(opts) {
     opts = opts || {};
-    const minGapMs = opts.minGapMs != null ? opts.minGapMs : 20000;
+    const minGapMs = opts.minGapMs != null ? opts.minGapMs : 10000;
     const timeoutMs = opts.timeoutMs != null ? opts.timeoutMs : 16000;
     const now = Date.now();
     if (pulling || now - lastPullAt < minGapMs) return null;
     if (location.origin !== "https://claude.ai") return null;
+    // Mid-keystroke: skip and come back shortly, so the iframe can never pull
+    // the caret out from under a sentence being typed.
+    if (!opts.ignoreTyping && isUserTyping()) {
+      if (!deferredRetry) {
+        deferredRetry = setTimeout(function () {
+          deferredRetry = null;
+          pullUsage(opts);
+        }, TYPING_IDLE_MS);
+      }
+      return null;
+    }
     pulling = true; lastPullAt = now;
 
     const f = document.createElement("iframe");
@@ -231,17 +316,25 @@
     f.style.cssText = "position:fixed;left:-9999px;top:0;width:1200px;height:900px;opacity:0;pointer-events:none;border:0";
     f.src = "https://claude.ai/new#settings/usage";
     const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+    // Whatever had focus before the iframe existed, plus the caret position.
+    const focusSnap = captureFocus();
+    // Focus can be stolen at any point while the iframe boots, not just at the
+    // end, so put it back the moment it moves rather than after the fact.
+    const focusGuard = setInterval(function () {
+      if (document.activeElement === f) restoreFocus(focusSnap);
+    }, 120);
     try {
       document.body.appendChild(f);
       let dlg = null, waited = 0, toggled = false;
+      const STEP = 250; // was 800ms: the dialog is usually up well before then
       while (waited < timeoutMs) {
-        await sleep(800); waited += 800;
+        await sleep(STEP); waited += STEP;
         let doc;
         try { doc = f.contentDocument; } catch (_) { break; } // cross-origin (shouldn't happen)
         if (!doc) continue;
         const d = usageDialogIn(doc);
         if (d && d.querySelector('[role="progressbar"],[role="meter"]')) { dlg = d; break; }
-        if (waited >= 4800 && !toggled) { // nudge the SPA to open the panel if needed
+        if (waited >= 1600 && !toggled) { // nudge the SPA to open the panel if needed
           toggled = true;
           try { f.contentWindow.location.hash = "#settings/general"; await sleep(600); f.contentWindow.location.hash = "#settings/usage"; } catch (_) {}
         }
@@ -250,7 +343,12 @@
       const base = parseUsageDialog(dlg);
       return base ? commit(base) : null;
     } catch (_) { return null; }
-    finally { f.remove(); pulling = false; }
+    finally {
+      clearInterval(focusGuard);
+      f.remove();
+      restoreFocus(focusSnap); // the iframe's removal can drop focus to <body>
+      pulling = false;
+    }
   }
 
   /* ===== 5. plan fallback ============================================= */
@@ -273,7 +371,7 @@
     if (USE_MOCK || document.hidden) return;
     if (usageDialogIn(document)) { await scrapeUsage(); return; } // panel open -> scrape directly
     const m = await read();
-    if (isStale(m, FRESH_MS)) await pullUsage();
+    if (isStale(m, freshnessMs())) await pullUsage();
   }
 
   let started = false;
@@ -281,8 +379,26 @@
     if (started || USE_MOCK) return;
     started = true;
     maybeRefresh();                                  // fresh data on load if stale
-    setInterval(maybeRefresh, FRESH_MS);             // and periodically while open
-    document.addEventListener("visibilitychange", maybeRefresh);
+    setInterval(maybeRefresh, TICK_MS);              // gated by freshnessMs()
+    document.addEventListener("visibilitychange", function () {
+      if (!document.hidden) noteActivity(); // coming back counts as activity
+      maybeRefresh();
+    });
+  }
+
+  // Called when the page knows the numbers just moved (a message was sent), so
+  // the strip updates on the event instead of waiting for the next tick.
+  function refreshSoon(delayMs) {
+    noteActivity();
+    let tries = 0;
+    const attempt = async function () {
+      if (usageDialogIn(document)) { scrapeUsage(); return; }
+      const got = await pullUsage({ minGapMs: 0 });
+      // null can mean "a pull is already running" or "deferred, user is typing";
+      // retry a couple of times so a send-triggered refresh is not simply lost.
+      if (!got && ++tries < 3) setTimeout(attempt, 3000);
+    };
+    setTimeout(attempt, delayMs == null ? 2500 : delayMs);
   }
 
   /* ===== 7. public entry ============================================= */
@@ -299,5 +415,9 @@
     pullUsage,
     parseUsageDialog,
     detectPlanFromDOM,
+    refreshSoon,
+    isUserTyping,
+    captureFocus,
+    restoreFocus,
   };
 })();
