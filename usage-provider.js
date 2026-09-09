@@ -288,26 +288,32 @@
     return base ? commit(base) : null;
   }
 
-  /* ===== 3b. focus protection ========================================
-   * The refresh iframe loads claude.ai's own app, which autofocuses its
-   * composer on boot. Focusing an element inside a same-origin iframe moves the
-   * browser's focus there, which yanked the caret out of whatever the user was
-   * typing in the real page. Two guards: don't start a refresh mid-keystroke,
-   * and put focus back if the iframe takes it anyway.
+  /* ===== 3b. keeping out of the user's way ============================
+   * HARD RULE: this extension never moves focus and never touches the
+   * selection. An earlier attempt did exactly that — it snapshotted the caret
+   * before a refresh and restored it every 120ms while the refresh iframe was
+   * alive. Because the snapshot was taken once and the user kept typing, it
+   * dragged the caret back a word or two, swallowed keystrokes and broke paste.
+   * Repairing focus from the outside always races the person typing.
+   *
+   * So the iframe is stopped from taking focus in the first place (see the
+   * pull), and refreshes simply stay away while someone is typing.
    * ================================================================== */
-  const TYPING_IDLE_MS = 2500;
+  const TYPING_IDLE_MS = 4000;
   let lastTypedAt = 0;
   try {
-    document.addEventListener(
-      "keydown",
-      function () { lastTypedAt = Date.now(); noteActivity(); },
-      { capture: true, passive: true }
-    );
+    ["keydown", "input", "paste", "compositionstart"].forEach(function (ev) {
+      document.addEventListener(
+        ev,
+        function () { lastTypedAt = Date.now(); noteActivity(); },
+        { capture: true, passive: true }
+      );
+    });
   } catch (_) {}
 
-  // Focus alone is not enough to defer on: claude.ai autofocuses the composer,
-  // so it holds focus almost permanently and refreshes would never run. Defer
-  // only during an actual burst of typing.
+  // claude.ai keeps the composer focused almost permanently, so focus alone is
+  // not a useful signal — deferring on it would mean never refreshing. Defer on
+  // recent editing instead.
   function isUserTyping() {
     if (Date.now() - lastTypedAt > TYPING_IDLE_MS) return false;
     const el = document.activeElement;
@@ -317,100 +323,110 @@
     return tag === "TEXTAREA" || tag === "INPUT";
   }
 
-  function captureFocus() {
-    const el = document.activeElement;
-    if (!el || el === document.body) return null;
-    const snap = { el: el, range: null, start: null, end: null };
-    try {
-      if ("selectionStart" in el && el.selectionStart != null) {
-        snap.start = el.selectionStart;
-        snap.end = el.selectionEnd;
-      }
-    } catch (_) {}
-    try {
-      const sel = window.getSelection();
-      if (sel && sel.rangeCount) snap.range = sel.getRangeAt(0).cloneRange();
-    } catch (_) {}
-    return snap;
-  }
+  /* ===== 4. active pull (hidden frame) ================================
+   * Measured in a browser, not assumed — of every way to hide a frame, ONLY
+   * display:none stops the page inside it from taking focus:
+   *
+   *   offscreen + opacity:0   focus STOLEN
+   *   inert                   focus STOLEN
+   *   sandbox                 focus STOLEN
+   *   visibility:hidden       focus STOLEN
+   *   display:none            focus kept  <-- the only one
+   *
+   * The catch is that display:none gives the frame a 0x0 viewport, so a
+   * responsive app may render its mobile layout, or nothing at all. Hence:
+   *
+   *   - background tab: nobody is typing, so use a normally rendered frame,
+   *     which is the reliable way to get the panel to mount.
+   *   - foreground tab: try the layout-less frame FIRST, since it cannot take
+   *     focus. Only if the panel never appears there fall back to a rendered
+   *     frame, and then only when the user is not typing — aborting the moment
+   *     they start.
+   *
+   * Nothing in here touches focus or the selection. That was the previous
+   * attempt, and restoring a caret snapshot on a timer fought the person typing.
+   * ================================================================== */
+  const SRC_SETTINGS = "https://claude.ai/settings/usage";   // no composer to autofocus
+  const SRC_HASH = "https://claude.ai/new#settings/usage";   // fallback route
+  let pulling = false, lastPullAt = 0;
 
-  function restoreFocus(snap) {
-    if (!snap || !snap.el || !snap.el.isConnected) return;
-    try { snap.el.focus({ preventScroll: true }); } catch (_) {
-      try { snap.el.focus(); } catch (__) {}
-    }
-    try {
-      if (snap.start != null && typeof snap.el.setSelectionRange === "function") {
-        snap.el.setSelectionRange(snap.start, snap.end);
-      } else if (snap.range) {
-        const sel = window.getSelection();
-        sel.removeAllRanges();
-        sel.addRange(snap.range);
-      }
-    } catch (_) {}
-  }
-
-  /* ===== 4. active pull (hidden same-origin iframe) =================== */
-  let pulling = false, lastPullAt = 0, deferredRetry = null;
-  async function pullUsage(opts) {
-    opts = opts || {};
-    const minGapMs = opts.minGapMs != null ? opts.minGapMs : 10000;
-    const timeoutMs = opts.timeoutMs != null ? opts.timeoutMs : 16000;
-    const now = Date.now();
-    if (pulling || now - lastPullAt < minGapMs) return null;
-    if (location.origin !== "https://claude.ai") return null;
-    // Mid-keystroke: skip and come back shortly, so the iframe can never pull
-    // the caret out from under a sentence being typed.
-    if (!opts.ignoreTyping && isUserTyping()) {
-      if (!deferredRetry) {
-        deferredRetry = setTimeout(function () {
-          deferredRetry = null;
-          pullUsage(opts);
-        }, TYPING_IDLE_MS);
-      }
-      return null;
-    }
-    pulling = true; lastPullAt = now;
-
+  function makeFrame(noLayout, src) {
     const f = document.createElement("iframe");
     f.setAttribute("aria-hidden", "true");
     f.setAttribute("data-cus-probe", "1");
-    f.style.cssText = "position:fixed;left:-9999px;top:0;width:1200px;height:900px;opacity:0;pointer-events:none;border:0";
-    f.src = "https://claude.ai/new#settings/usage";
+    f.setAttribute("tabindex", "-1");
+    f.style.cssText =
+      "position:fixed;left:-9999px;top:0;width:1200px;height:900px;opacity:0;pointer-events:none;border:0";
+    // The one mitigation that actually works: no layout box, so nothing inside
+    // can be focused, so the user's caret is never disturbed.
+    if (noLayout) f.style.display = "none";
+    f.src = src;
+    return f;
+  }
+
+  /* One attempt. Resolves to a committed model, or null. */
+  async function attemptPull(noLayout, src, budgetMs) {
+    const f = makeFrame(noLayout, src);
     const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
-    // Whatever had focus before the iframe existed, plus the caret position.
-    const focusSnap = captureFocus();
-    // Focus can be stolen at any point while the iframe boots, not just at the
-    // end, so put it back the moment it moves rather than after the fact.
-    const focusGuard = setInterval(function () {
-      if (document.activeElement === f) restoreFocus(focusSnap);
-    }, 120);
     try {
       document.body.appendChild(f);
-      let dlg = null, waited = 0, toggled = false;
-      const STEP = 250; // was 800ms: the dialog is usually up well before then
-      while (waited < timeoutMs) {
-        await sleep(STEP); waited += STEP;
+      let waited = 0, toggled = false;
+      while (waited < budgetMs) {
+        await sleep(250); waited += 250;
+        // A rendered frame CAN take focus, so if the user starts typing while
+        // one is open, give up immediately rather than sit on their focus.
+        if (!noLayout && isUserTyping()) return null;
         let doc;
-        try { doc = f.contentDocument; } catch (_) { break; } // cross-origin (shouldn't happen)
+        try { doc = f.contentDocument; } catch (_) { return null; } // cross-origin
         if (!doc) continue;
         const d = usageDialogIn(doc);
-        if (d && d.querySelector('[role="progressbar"],[role="meter"]')) { dlg = d; break; }
-        if (waited >= 1600 && !toggled) { // nudge the SPA to open the panel if needed
+        if (d && d.querySelector('[role="progressbar"],[role="meter"]')) {
+          const base = parseUsageDialog(d);
+          return base ? commit(base) : null;
+        }
+        if (waited >= 1600 && !toggled) { // nudge the SPA into opening the panel
           toggled = true;
-          try { f.contentWindow.location.hash = "#settings/general"; await sleep(600); f.contentWindow.location.hash = "#settings/usage"; } catch (_) {}
+          try {
+            f.contentWindow.location.hash = "#settings/general";
+            await sleep(400);
+            f.contentWindow.location.hash = "#settings/usage";
+          } catch (_) {}
         }
       }
-      if (!dlg) return null;
-      const base = parseUsageDialog(dlg);
-      return base ? commit(base) : null;
+      return null;
     } catch (_) { return null; }
-    finally {
-      clearInterval(focusGuard);
-      f.remove();
-      restoreFocus(focusSnap); // the iframe's removal can drop focus to <body>
-      pulling = false;
-    }
+    finally { f.remove(); }
+  }
+
+  // A rendered frame CAN take focus, so it may only be used when the user is not
+  // in this tab: another tab, another app, or minimised. Then focus theft is
+  // invisible and costs nothing. `hidden` covers other-tab/minimised;
+  // `hasFocus()` also covers "the window is behind another application".
+  function userIsAway() {
+    try { return document.hidden || !document.hasFocus(); } catch (_) { return false; }
+  }
+
+  async function pullUsage(opts) {
+    opts = opts || {};
+    const minGapMs = opts.minGapMs != null ? opts.minGapMs : 10000;
+    const now = Date.now();
+    if (pulling || now - lastPullAt < minGapMs) return null;
+    if (location.origin !== "https://claude.ai") return null;
+    pulling = true; lastPullAt = now;
+    try {
+      if (userIsAway()) {
+        // Free of consequences, and the reliable way to get the panel to mount.
+        return (await attemptPull(false, SRC_SETTINGS, 8000)) ||
+               (await attemptPull(false, SRC_HASH, 12000));
+      }
+      // The user is here, typing or about to. ONLY the frame that cannot take
+      // focus is acceptable, even though its 0x0 viewport means the app may
+      // render a mobile layout, or nothing at all. If it yields nothing, the
+      // numbers stay as they are until the user next steps away — which is
+      // itself a refresh trigger. Never disturb the composer for freshness.
+      return (await attemptPull(true, SRC_SETTINGS, 4000)) ||
+             (await attemptPull(true, SRC_HASH, 4000));
+    } finally { pulling = false; }
   }
 
   /* ===== 5. plan fallback ============================================= */
@@ -430,7 +446,7 @@
   // update storage (-> onChange -> re-render). Staleness-gating de-dupes across
   // multiple open tabs (first one to refresh wins).
   async function maybeRefresh() {
-    if (USE_MOCK || document.hidden) return;
+    if (USE_MOCK) return;
     if (usageDialogIn(document)) { await scrapeUsage(); return; } // panel open -> scrape directly
     const m = await read();
     // A switch makes even a seconds-old cache wrong, so refresh regardless of age.
@@ -448,6 +464,9 @@
       if (!document.hidden) noteActivity(); // coming back counts as activity
       maybeRefresh();
     });
+    // Stepping away (another tab, another app, minimised) is the moment a fully
+    // rendered refresh becomes free of consequences, so take it then.
+    window.addEventListener("blur", function () { setTimeout(maybeRefresh, 250); });
   }
 
   // Called when the page knows the numbers just moved (a message was sent), so
@@ -482,7 +501,5 @@
     refreshSoon,
     orgKey,
     isUserTyping,
-    captureFocus,
-    restoreFocus,
   };
 })();

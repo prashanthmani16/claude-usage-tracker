@@ -99,43 +99,7 @@ test("a refresh is deferred while the user is actively typing", async () => {
   }
 });
 
-test("focus and caret are restored after being taken away", () => {
-  const { window, provider } = loadProvider();
-  try {
-    const input = window.document.createElement("textarea");
-    input.value = "half-written sentence";
-    window.document.body.appendChild(input);
-    const other = window.document.createElement("textarea");
-    window.document.body.appendChild(other);
 
-    input.focus();
-    input.setSelectionRange(5, 5);
-    const snap = provider.captureFocus();
-
-    other.focus(); // stand-in for the iframe stealing focus
-    assert.equal(window.document.activeElement, other);
-
-    provider.restoreFocus(snap);
-    assert.equal(window.document.activeElement, input, "focus must come back");
-    assert.equal(input.selectionStart, 5, "and the caret with it");
-  } finally {
-    window.close();
-  }
-});
-
-test("restoring focus to a removed element does not throw", () => {
-  const { window, provider } = loadProvider();
-  try {
-    const input = window.document.createElement("textarea");
-    window.document.body.appendChild(input);
-    input.focus();
-    const snap = provider.captureFocus();
-    input.remove(); // the composer unmounted mid-refresh
-    assert.doesNotThrow(() => provider.restoreFocus(snap));
-  } finally {
-    window.close();
-  }
-});
 
 /* ---------------------------------------------------------------------------
  * Organisation switching. One account can hold several orgs with separate
@@ -202,6 +166,92 @@ test("a model with no org attached is still served (unknown identity)", async ()
     const m = await provider.fetchUsage();
     assert.ok(m, "an unidentifiable org must not blank the UI");
     assert.equal(m.plan, "pro");
+  } finally {
+    window.close();
+  }
+});
+
+/* ---------------------------------------------------------------------------
+ * The composer must never be disturbed. A previous build snapshotted the caret
+ * before a refresh and restored it on a timer, which dragged the caret
+ * backwards mid-sentence and swallowed keystrokes. The rule now: no focus or
+ * selection manipulation anywhere in the shipped code, and the refresh frame is
+ * inert so it cannot take focus either.
+ * ------------------------------------------------------------------------- */
+
+const fsp = require("node:fs");
+const pathp = require("node:path");
+const SRC_ROOT = pathp.join(__dirname, "..");
+
+test("shipped code never moves focus or the selection", () => {
+  const banned = [
+    [/\.focus\s*\(/, "focus() call"],
+    [/removeAllRanges\s*\(/, "Selection.removeAllRanges()"],
+    [/\baddRange\s*\(/, "Selection.addRange()"],
+    [/setSelectionRange\s*\(/, "setSelectionRange()"],
+    [/\.blur\s*\(/, "blur() call"],
+  ];
+  for (const file of ["content.js", "usage-provider.js"]) {
+    const src = fsp.readFileSync(pathp.join(SRC_ROOT, file), "utf8");
+    // strip comments so prose describing the old bug does not trip the check
+    const code = src.replace(/\/\*[\s\S]*?\*\//g, "").replace(/^\s*\/\/.*$/gm, "");
+    for (const [re, label] of banned) {
+      assert.ok(!re.test(code), `${file} must not contain a ${label} — it fights the person typing`);
+    }
+  }
+});
+
+test("the refresh frame uses display:none, the only mitigation that works", () => {
+  // Measured in Chrome: offscreen+opacity, inert, sandbox and visibility:hidden
+  // all still let the framed page take focus. display:none does not, because a
+  // frame with no layout box cannot be focused.
+  const src = fsp.readFileSync(pathp.join(SRC_ROOT, "usage-provider.js"), "utf8");
+  assert.match(src, /if \(noLayout\) f\.style\.display = "none";/,
+    "the focus-safe frame must be display:none");
+  assert.match(src, /setAttribute\("tabindex", "-1"\)/, "and kept out of the tab order");
+  // a rendered frame may only be used when the user is not in the tab
+  assert.match(src, /function userIsAway\(\)/, "there must be an away check");
+  assert.match(src, /document\.hidden \|\| !document\.hasFocus\(\)/,
+    "away must mean hidden OR unfocused, so another app counts too");
+  const present = src.slice(src.indexOf("// The user is here"));
+  assert.ok(!/attemptPull\(false/.test(present),
+    "while the user is present, NO rendered frame may be created");
+});
+
+test("a rendered frame is abandoned if typing starts mid-pull", () => {
+  const src = fsp.readFileSync(pathp.join(SRC_ROOT, "usage-provider.js"), "utf8");
+  assert.match(src, /if \(!noLayout && isUserTyping\(\)\) return null;/,
+    "a rendered frame must bail out the moment the user starts typing");
+});
+
+test("a refresh is skipped while the user is actively typing", async () => {
+  const { window, provider } = loadProvider();
+  try {
+    const input = window.document.createElement("textarea");
+    window.document.body.appendChild(input);
+    input.focus();
+    // simulate a keystroke landing in the composer right now
+    window.document.dispatchEvent(new window.Event("keydown", { bubbles: true }));
+    assert.equal(provider.isUserTyping(), true, "a fresh keystroke in an editable means typing");
+
+    const before = window.document.querySelectorAll("iframe").length;
+    await provider.pullUsage({ minGapMs: 0 });
+    assert.equal(
+      window.document.querySelectorAll("iframe").length, before,
+      "no refresh frame may be created while typing"
+    );
+  } finally {
+    window.close();
+  }
+});
+
+test("typing state lapses once the keystrokes stop", () => {
+  const { window, provider } = loadProvider();
+  try {
+    const input = window.document.createElement("input");
+    window.document.body.appendChild(input);
+    input.focus();
+    assert.equal(provider.isUserTyping(), false, "no recent keystroke: not typing");
   } finally {
     window.close();
   }

@@ -36,3 +36,9 @@ rather than an update. It is an identifier, never shown to users.
 AMO requires an explicit add-on ID for MV3, and `data_collection_permissions`
 for anything submitted since November 2025. `140`/`142` are the Firefox versions
 that introduced that key. Keep the ID stable — AMO ties updates to it.
+
+## Versioning
+
+One version per release, not per change. Several fixes made in the same session
+ship together under a single version number; the number only moves when a
+package is actually uploaded to a store.
