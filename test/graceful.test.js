@@ -213,9 +213,15 @@ test("the refresh frame uses display:none, the only mitigation that works", () =
   assert.match(src, /function userIsAway\(\)/, "there must be an away check");
   assert.match(src, /document\.hidden \|\| !document\.hasFocus\(\)/,
     "away must mean hidden OR unfocused, so another app counts too");
-  const present = src.slice(src.indexOf("// The user is here"));
-  assert.ok(!/attemptPull\(false/.test(present),
-    "while the user is present, NO rendered frame may be created");
+  // the focus-safe frame must be attempted before any rendered one
+  const body = src.slice(src.indexOf("async function pullUsage"));
+  const firstSafe = body.indexOf("attemptPull(true");
+  const firstRendered = body.indexOf("attemptPull(false");
+  assert.ok(firstSafe > -1 && firstSafe < firstRendered,
+    "the focus-safe frame must always be tried first");
+  // and a rendered frame must be unreachable while the user is present
+  assert.match(src, /if \(!userIsAway\(\)\) return null;/,
+    "a rendered frame must be gated on the user being away");
 });
 
 test("a rendered frame is abandoned if typing starts mid-pull", () => {

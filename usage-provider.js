@@ -414,18 +414,18 @@
     if (location.origin !== "https://claude.ai") return null;
     pulling = true; lastPullAt = now;
     try {
-      if (userIsAway()) {
-        // Free of consequences, and the reliable way to get the panel to mount.
-        return (await attemptPull(false, SRC_SETTINGS, 8000)) ||
-               (await attemptPull(false, SRC_HASH, 12000));
-      }
-      // The user is here, typing or about to. ONLY the frame that cannot take
-      // focus is acceptable, even though its 0x0 viewport means the app may
-      // render a mobile layout, or nothing at all. If it yields nothing, the
-      // numbers stay as they are until the user next steps away — which is
-      // itself a refresh trigger. Never disturb the composer for freshness.
-      return (await attemptPull(true, SRC_SETTINGS, 4000)) ||
-             (await attemptPull(true, SRC_HASH, 4000));
+      // ALWAYS the focus-safe frame first. Measured against live claude.ai from
+      // the Claude Design page: it renders the usage panel in ~500ms even with a
+      // 0x0 viewport, and takes no focus, so the composer is never touched. The
+      // same frame rendered normally DID steal focus, which is the whole bug.
+      const m = (await attemptPull(true, SRC_SETTINGS, 3500)) ||
+                (await attemptPull(true, SRC_HASH, 3500));
+      if (m) return m;
+      // Only if the panel genuinely refuses to mount without a viewport, and
+      // only while nobody is here to be interrupted.
+      if (!userIsAway()) return null;
+      return (await attemptPull(false, SRC_SETTINGS, 8000)) ||
+             (await attemptPull(false, SRC_HASH, 12000));
     } finally { pulling = false; }
   }
 
