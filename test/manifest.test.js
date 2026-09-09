@@ -67,12 +67,17 @@ test("no innerHTML assignment in the shipped scripts (AMO rejects it)", () => {
   }
 });
 
-test("side-nav card fill matches the specified tokens", () => {
+test("the four surface fills match the specified tokens", () => {
+  // Two surfaces, two themes. The side-nav card and the strip under the
+  // composer are separate tokens on purpose — a change to one must not move the
+  // other, which is exactly what these four assertions pin down.
   const css = fs.readFileSync(path.join(ROOT, "styles.css"), "utf8");
   const light = /:root|\.cus \{([\s\S]*?)\}/.exec(css)[1];
   const dark = /html\.cus-theme-dark \.cus \{([\s\S]*?)\}/.exec(css)[1];
-  assert.match(light, /--cus-card-bg:\s*#F4F3F1/i, "light card fill");
-  assert.match(dark, /--cus-card-bg:\s*#1F1F1F/i, "dark card fill");
+  assert.match(light, /--cus-card-bg:\s*#F4F3F1/i, "light side-nav card");
+  assert.match(dark, /--cus-card-bg:\s*#1F1F1F/i, "dark side-nav card");
+  assert.match(light, /--cus-layer-bg:\s*#FCFCFB/i, "light strip under the composer");
+  assert.match(dark, /--cus-layer-bg:\s*#151515/i, "dark strip under the composer");
 });
 
 test("extension name is Claude Usage Tracker", () => {
