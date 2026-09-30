@@ -470,3 +470,40 @@ test("the composer is watched for resize, so panel drags re-align it", async () 
     await ext.close();
   }
 });
+
+/* ---------------------------------------------------------------------------
+ * The strip must tuck under the composer CARD, never land inside it. claude.ai
+ * restructured the composer and the strip started rendering between the input
+ * and the toolbar row, inside the card's own border.
+ * ------------------------------------------------------------------------- */
+
+const { composerCardShell } = require("./fixtures");
+
+for (const [label, opts] of [
+  ["bordered card (as shipped before)", {}],
+  ["borderless card", { border: false }],
+  ["rounded inner wrapper", { roundedInner: true }],
+  ["borderless AND rounded inner wrapper", { border: false, roundedInner: true }],
+]) {
+  test(`strip tucks under the composer card — ${label}`, async () => {
+    const ext = await loadExtension({ html: composerCardShell(opts), model: { session: SPEND } });
+    try {
+      const strip = ext.strip();
+      assert.ok(strip, "expected a strip");
+      const doc = ext.window.document;
+      const card = doc.querySelector(".composer-card");
+      const toolbar = doc.querySelector(".toolbar");
+      const inputWrap = doc.querySelector(".input-wrap");
+
+      assert.ok(!card.contains(strip), "the strip must NOT be inside the composer card");
+      assert.equal(strip.previousElementSibling, card, "it must sit directly after the card");
+      // the exact reported breakage: strip between the input and the toolbar
+      assert.ok(
+        !(inputWrap.compareDocumentPosition(strip) & 4 && strip.compareDocumentPosition(toolbar) & 4),
+        "the strip must never fall between the input and the toolbar row"
+      );
+    } finally {
+      await ext.close();
+    }
+  });
+}

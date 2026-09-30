@@ -253,9 +253,35 @@ function chatFooterShell() {
   ].join("");
 }
 
+
+// claude.ai's composer has shipped in several shapes. `opts.border` drops the
+// card's border (it is then rounded only); `opts.roundedInner` gives the inner
+// input wrapper a radius of its own. Both shapes previously misplaced the
+// strip: the first sent the climb past the card, the second stopped it short,
+// and either way the strip landed between the input and the toolbar row.
+function composerCardShell(opts) {
+  opts = opts || {};
+  var cardStyle = "border-top-left-radius:20px;border-bottom-left-radius:20px" +
+    (opts.border === false ? "" : ";border-top-width:1px");
+  var innerStyle = opts.roundedInner ? ' style="border-top-left-radius:12px"' : "";
+  return [
+    "<main>",
+    '  <fieldset class="composer-fieldset" data-rect="672,157">',
+    '    <div class="composer-card" style="' + cardStyle + '" data-rect="672,120">',
+    '      <div class="input-wrap"' + innerStyle + ' data-rect="642,46">',
+    '        <div contenteditable="true" data-rect="636,20"></div>',
+    "      </div>",
+    '      <div class="toolbar" data-rect="642,44">Chat Cowork</div>',
+    "    </div>",
+    "  </fieldset>",
+    "</main>",
+  ].join("");
+}
+
 module.exports = {
   bar,
   composerShell,
+  composerCardShell,
   chatFooterShell,
   designComposerShell,
   freeDialog,

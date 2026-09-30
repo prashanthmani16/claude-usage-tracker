@@ -186,23 +186,39 @@
     return r.width >= MIN_COMPOSER_W && r.height > 0;
   }
 
-  // The chat composer box (bordered container around the message input).
-  // Prefers the editable on the chat surface; the bare selector stays as a
-  // fallback so other composer surfaces (e.g. Design) still resolve.
+  // The composer CARD: the rounded box drawn around the message input, which is
+  // what the strip tucks under.
+  //
+  // Matched on the rounded corner and on being the WIDEST such box around the
+  // input — deliberately not on having a border. claude.ai ships the composer
+  // both bordered and borderless, and requiring a border made the climb miss
+  // the card and settle on a wrapper (or fall back to the input's own parent),
+  // which dropped the strip INSIDE the composer, between the input and the
+  // toolbar row. Taking the widest rounded box also survives the opposite
+  // shape, where an inner wrapper is itself rounded.
+  var COMPOSER_WIDTH_SLACK = 200; // keeps the climb out of page-level containers
   function findComposer() {
     var input =
       document.querySelector('main div[contenteditable="true"]') ||
       document.querySelector('div[contenteditable="true"]') ||
       document.querySelector("main textarea");
     if (!input) return null;
-    var node = input;
+    var inputWidth = input.getBoundingClientRect().width;
+    var node = input, best = null, bestWidth = -1, formish = null;
     for (var i = 0; i < 8 && node.parentElement; i++) {
       node = node.parentElement;
-      var cs = getComputedStyle(node);
-      if (parseFloat(cs.borderTopWidth) > 0 && parseInt(cs.borderTopLeftRadius) >= 8) return node;
-      if (node.tagName === "FORM" || node.tagName === "FIELDSET") return node;
+      var radius = parseInt(getComputedStyle(node).borderTopLeftRadius) || 0;
+      var w = node.getBoundingClientRect().width;
+      // ">=" keeps the OUTERMOST of equally wide cards, which is what Claude
+      // Design needs: its input box sits inside a larger tray card, and the
+      // strip belongs under the tray.
+      if (radius >= 8 && w <= inputWidth + COMPOSER_WIDTH_SLACK && w >= bestWidth) {
+        best = node;
+        bestWidth = w;
+      }
+      if (!formish && (node.tagName === "FORM" || node.tagName === "FIELDSET")) formish = node;
     }
-    return input.parentElement;
+    return best || formish || input.parentElement;
   }
 
   // The side nav root — used both to scope the footer search and to measure the
