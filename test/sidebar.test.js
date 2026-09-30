@@ -484,6 +484,9 @@ for (const [label, opts] of [
   ["borderless card", { border: false }],
   ["rounded inner wrapper", { roundedInner: true }],
   ["borderless AND rounded inner wrapper", { border: false, roundedInner: true }],
+  // no radius and no border at all: found only by the card painting its own
+  // background. This is the shape a plan-specific redesign could produce.
+  ["flat card, found by its background", { flat: true }],
 ]) {
   test(`strip tucks under the composer card — ${label}`, async () => {
     const ext = await loadExtension({ html: composerCardShell(opts), model: { session: SPEND } });

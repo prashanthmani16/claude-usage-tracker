@@ -197,6 +197,25 @@
   // toolbar row. Taking the widest rounded box also survives the opposite
   // shape, where an inner wrapper is itself rounded.
   var COMPOSER_WIDTH_SLACK = 200; // keeps the climb out of page-level containers
+  function isOpaque(c) { return !!c && c !== "rgba(0, 0, 0, 0)" && c !== "transparent"; }
+
+  // Two independent signals for "this element is the composer's own surface",
+  // so a redesign has to remove BOTH to fool it:
+  //   rounded — it has a corner radius
+  //   filled  — it paints its own background, unlike its parent
+  // The plan the account is on changes this markup (Pro and Team do not render
+  // the same composer), so the test has to be about how the box looks, not
+  // about particular classes or a border.
+  function looksLikeComposerCard(el) {
+    var cs = getComputedStyle(el);
+    if ((parseInt(cs.borderTopLeftRadius) || 0) >= 4) return true;
+    if (!el.parentElement) return false;
+    return (
+      isOpaque(cs.backgroundColor) &&
+      cs.backgroundColor !== getComputedStyle(el.parentElement).backgroundColor
+    );
+  }
+
   function findComposer() {
     var input =
       document.querySelector('main div[contenteditable="true"]') ||
@@ -205,14 +224,13 @@
     if (!input) return null;
     var inputWidth = input.getBoundingClientRect().width;
     var node = input, best = null, bestWidth = -1, formish = null;
-    for (var i = 0; i < 8 && node.parentElement; i++) {
+    for (var i = 0; i < 12 && node.parentElement; i++) {
       node = node.parentElement;
-      var radius = parseInt(getComputedStyle(node).borderTopLeftRadius) || 0;
       var w = node.getBoundingClientRect().width;
       // ">=" keeps the OUTERMOST of equally wide cards, which is what Claude
       // Design needs: its input box sits inside a larger tray card, and the
       // strip belongs under the tray.
-      if (radius >= 8 && w <= inputWidth + COMPOSER_WIDTH_SLACK && w >= bestWidth) {
+      if (looksLikeComposerCard(node) && w <= inputWidth + COMPOSER_WIDTH_SLACK && w >= bestWidth) {
         best = node;
         bestWidth = w;
       }

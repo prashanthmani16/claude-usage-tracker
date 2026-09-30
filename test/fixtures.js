@@ -261,8 +261,9 @@ function chatFooterShell() {
 // and either way the strip landed between the input and the toolbar row.
 function composerCardShell(opts) {
   opts = opts || {};
-  var cardStyle = "border-top-left-radius:20px;border-bottom-left-radius:20px" +
-    (opts.border === false ? "" : ";border-top-width:1px");
+  var cardStyle = "background:#202020" +
+    (opts.flat ? "" : ";border-top-left-radius:20px;border-bottom-left-radius:20px") +
+    (opts.border === false || opts.flat ? "" : ";border-top-width:1px");
   var innerStyle = opts.roundedInner ? ' style="border-top-left-radius:12px"' : "";
   return [
     "<main>",
