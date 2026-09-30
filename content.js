@@ -58,10 +58,15 @@
   }
 
   /* ---------------- component builders ---------------- */
+  // Usage bands, applied to every meter (side-nav card and composer strip
+  // alike): amber from three quarters used, red once the limit is reached.
+  var WARN_AT = 75, FULL_AT = 100;
   function makeBar(pct) {
     var bar = el("div", "cus-bar");
     var fill = el("div", "cus-bar-fill");
-    if (Number(pct) >= 100) fill.classList.add("cus-red");
+    var n = Number(pct) || 0;
+    if (n >= FULL_AT) fill.classList.add("cus-red");
+    else if (n >= WARN_AT) fill.classList.add("cus-warn");
     fill.style.width = Math.max(0, Math.min(Number(pct) || 0, 100)) + "%";
     bar.appendChild(fill);
     return bar;

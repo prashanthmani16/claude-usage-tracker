@@ -16,7 +16,10 @@
   --cus-track-card: #DDDDD9; /* Figma: card bar track */
   --cus-track-strip: #e5e5e2;
   --cus-fill: linear-gradient(90deg, #1b4d88 0%, #2a78d6 100%);
-  --cus-fill-red: linear-gradient(90deg, #cf4b3b 0%, #e5715f 100%);
+  /* Usage bands: amber once the meter is three quarters gone, red when it is
+     spent. Both themes share them — a warning should not soften in light mode. */
+  --cus-fill-warn: linear-gradient(90deg, #A37000 0%, #FFAE00 100%);
+  --cus-fill-red: linear-gradient(90deg, #990500 0%, #FF0900 100%);
   --cus-layer-bg: #FCFCFB;
   --cus-layer-border: #e6e6e5;
   --cus-divider: #d8d8d7;
@@ -53,6 +56,9 @@ html.cus-theme-dark .cus {
   border-radius: 999px;
   background: var(--cus-fill);
   transition: width 0.28s ease;
+}
+.cus-bar-fill.cus-warn {
+  background: var(--cus-fill-warn);
 }
 .cus-bar-fill.cus-red {
   background: var(--cus-fill-red);

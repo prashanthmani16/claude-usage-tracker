@@ -535,3 +535,60 @@ test("Pro account composer: strip tucks under the card, not inside it", async ()
     await ext.close();
   }
 });
+
+/* ---------------------------------------------------------------------------
+ * Usage bands on the bar fill: blue while there is room, amber from 75% used,
+ * red once the limit is reached. Boundaries matter — 74 is not amber, 75 is;
+ * 99 is not red, 100 is.
+ * ------------------------------------------------------------------------- */
+
+const bandOf = (fill) =>
+  fill.classList.contains("cus-red") ? "red"
+  : fill.classList.contains("cus-warn") ? "amber"
+  : "normal";
+
+test("bar fill changes band at 75% and again at 100%", async () => {
+  const cases = [
+    [0, "normal"], [50, "normal"], [74, "normal"],
+    [75, "amber"], [88, "amber"], [99, "amber"],
+    [100, "red"], [140, "red"],
+  ];
+  for (const [pct, expected] of cases) {
+    const ext = await loadExtension({
+      html: composerShell(672),
+      model: { session: { type: "session", name: "Current session", pct, reset: "Resets in 1 hr" } },
+    });
+    try {
+      const fill = ext.strip().querySelector(".cus-bar-fill");
+      assert.equal(bandOf(fill), expected, `${pct}% should be ${expected}`);
+      // the width still tracks the real value, clamped to the track
+      assert.equal(fill.style.width, Math.min(pct, 100) + "%");
+    } finally {
+      await ext.close();
+    }
+  }
+});
+
+test("bands apply to the side-nav card meters too, per meter", async () => {
+  const ext = await loadExtension({
+    html: sidebarShell(),
+    model: { sidebar: [
+      { name: "All models", pct: 30, reset: "Resets Sat" },
+      { name: "Fable", pct: 80, reset: "Resets Sat" },
+      { name: "Opus", pct: 100, reset: "Resets Sat" },
+    ] },
+  });
+  try {
+    const bands = [...ext.card().querySelectorAll(".cus-bar-fill")].map(bandOf);
+    assert.deepEqual(bands, ["normal", "amber", "red"], "each meter bands independently");
+  } finally {
+    await ext.close();
+  }
+});
+
+test("band gradients match the specified colours", () => {
+  const css = require("node:fs").readFileSync(
+    require("node:path").join(__dirname, "..", "styles.css"), "utf8");
+  assert.match(css, /--cus-fill-warn:\s*linear-gradient\(90deg,\s*#A37000 0%,\s*#FFAE00 100%\)/i);
+  assert.match(css, /--cus-fill-red:\s*linear-gradient\(90deg,\s*#990500 0%,\s*#FF0900 100%\)/i);
+});
