@@ -510,3 +510,28 @@ for (const [label, opts] of [
     }
   });
 }
+
+test("Pro account composer: strip tucks under the card, not inside it", async () => {
+  // Transcribed from the live Pro DOM. Reported as the strip rendering between
+  // the input and the toolbar row, inside the composer's own border.
+  const { proComposerShell } = require("./fixtures");
+  const ext = await loadExtension({ html: proComposerShell(), model: { session: SPEND } });
+  try {
+    const doc = ext.window.document;
+    const strip = ext.strip();
+    const card = doc.querySelector(".composer-card");
+    const toolbar = doc.querySelector(".toolbar");
+    const inputWrap = doc.querySelector(".w-full.max-h-96");
+
+    assert.ok(strip, "expected a strip");
+    assert.ok(!card.contains(strip), "the strip must NOT be inside the composer card");
+    assert.equal(strip.previousElementSibling, card, "it must sit directly after the card");
+    // the exact reported placement: after the input wrapper, above the toolbar
+    assert.notEqual(strip.previousElementSibling, inputWrap,
+      "the strip must not follow the input wrapper, which is what put it inside the card");
+    assert.ok(toolbar.compareDocumentPosition(strip) & 4,
+      "the strip must come after the toolbar row, not before it");
+  } finally {
+    await ext.close();
+  }
+});

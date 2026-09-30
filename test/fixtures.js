@@ -279,10 +279,48 @@ function composerCardShell(opts) {
   ].join("");
 }
 
+
+// The Pro account's composer, transcribed from the live ancestor chain (widths,
+// heights, radii, borders and backgrounds all as reported). It differs from
+// Team in the two ways that broke the finder: the card is BORDERLESS with only
+// a radius, and the <fieldset> that used to act as a backstop sits ten
+// ancestors up, outside the old eight-hop budget. The old finder therefore
+// fell back to the input's own parent and put the strip inside the card.
+function proComposerShell() {
+  return [
+    '<div data-rect="640,143">',                                   // i=11
+    '  <fieldset class="flex w-full min-w-0 flex-col" data-rect="640,143">',   // i=10
+    '    <div class="flex w-full min-w-0 flex-col" data-rect="640,143">',      // i=9
+    '      <div class="relative in-data-cds-dock-masked:bg-page" data-rect="640,143">', // i=8
+    '        <div class="flex w-full min-w-0 flex-col font-sans" data-rect="640,143">', // i=7
+    // i=6 — the composer card: radius 14, NO border, paints its own background
+    '          <div class="composer-card bg-surface-3" style="border-top-left-radius:14px;background:rgb(32,32,31)" data-rect="640,143">',
+    '            <div class="relative w-full min-w-0" data-rect="624,127">',   // i=5
+    '              <div class="w-full min-w-0 motion-safe" data-rect="624,127">', // i=4
+    '                <div class="relative min-w-0 break-words" data-rect="624,93">', // i=3
+    '                  <div class="relative w-full min-w-0" data-rect="624,93">',    // i=2
+    '                    <div class="w-full max-h-96 min-h-[var(--cmp-row-h)]" data-rect="624,54">', // i=1
+    '                      <div contenteditable="true" class="tiptap ProseMirror" data-rect="616,44"></div>',
+    "                    </div>",
+    "                  </div>",
+    "                </div>",
+    '                <div class="toolbar" data-rect="624,34">Chat Cowork</div>',
+    "              </div>",
+    "            </div>",
+    "          </div>",
+    "        </div>",
+    "      </div>",
+    "    </div>",
+    "  </fieldset>",
+    "</div>",
+  ].join("");
+}
+
 module.exports = {
   bar,
   composerShell,
   composerCardShell,
+  proComposerShell,
   chatFooterShell,
   designComposerShell,
   freeDialog,
